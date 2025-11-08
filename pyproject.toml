@@ -1,13 +1,13 @@
 [project]
 name = "okstdio"
 version = "0.1.0"
-description = "Add your description here"
+description = "基于 Stdio 的 JSON RPC 父子进程通信模块"
 readme = "README.md"
-authors = [
-    { name = "jianjian", email = "jianjian2048@gmail.com" }
-]
+authors = [{ name = "jianjian", email = "jianjian2048@gmail.com" }]
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pydantic>=2.12.4",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.0,<0.9"]
