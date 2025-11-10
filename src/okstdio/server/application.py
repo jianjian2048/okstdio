@@ -107,3 +107,25 @@ class RPCServer(StdioStream, RPCRouter):
                 ),
                 from_id=request_id,
             )
+
+    async def _run(self):
+        try:
+            while True:
+                try:
+                    request = await self.read_line()
+                    if not request:
+                        # 典型触发：对端关闭了写端或连接（到达 EOF），或本端/底层 transport 已被关闭
+                        break
+                    result = await self.handle_request(request)
+                    await self.write_line(result)
+                except RPCError as e:
+                    ...
+                except ValidationError as e:
+                    ...
+        except Exception as e:
+            raise e
+        finally:
+            if hasattr(self, "writer") and self.writer:
+                self.close()
+
+    def run(self): ...

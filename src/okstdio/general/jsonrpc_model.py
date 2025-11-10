@@ -16,8 +16,8 @@ class BaseJSONRPC(BaseModel):
             raise RPCInvalidRequestError(from_id=info.data.get("id", 0))
         return v.upper()
 
-    def __str__(self):
-        return self.model_dump_json()
+    def encode(self, encoding: str = "utf-8"):
+        return self.model_dump_json().encode(encoding)
 
 
 class JSONRPCRequest(BaseJSONRPC):
