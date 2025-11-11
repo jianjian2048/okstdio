@@ -1,3 +1,5 @@
+"""Stdio 流"""
+
 import asyncio
 import sys
 import os

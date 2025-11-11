@@ -14,7 +14,7 @@ class BaseJSONRPC(BaseModel):
     def validate_jsonrpc(cls, v, info) -> str:
         if v != "2.0":
             raise RPCInvalidRequestError(from_id=info.data.get("id", 0))
-        return v.upper()
+        return v
 
     def encode(self, encoding: str = "utf-8"):
         return self.model_dump_json().encode(encoding)
