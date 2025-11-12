@@ -39,7 +39,7 @@ async def logmw(request: JSONRPCRequest, call_next):
 
 
 @app.add_method(name="healthy", label="健康")
-def healthy() -> dict:
+def healthy() -> HealthyResult:
     """返回服务器是否健康
 
     return :
@@ -47,7 +47,7 @@ def healthy() -> dict:
     {"status": "ok"}
     ```
     """
-    return {"status": "ok"}
+    return HealthyResult()
 
 
 hero_router = RPCRouter(prefix="hero", label="英雄方法")
@@ -79,7 +79,10 @@ tasks = {}
 
 @hero_router.add_method(name="dungeon")
 async def dungeon(
-    hero_name: Annotated[str, Field(..., description="英雄名称")], io_write: IOWrite
+    hero_name: Annotated[
+        str, Field(..., description="英雄名称")
+    ],  # 简单参数可以使用 Field 添加注释.
+    io_write: IOWrite,
 ) -> FightingTask | JSONRPCServerErrorDetail:
     """进入一个副本, 打怪升级:
     ```json

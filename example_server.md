@@ -20,7 +20,24 @@ return :
 **返回**
 | 类型 | 说明 |
 | --- | --- |
-| dict | - |
+| HealthyResult | 健康响应 |
+
+```json
+{
+  "description": "健康响应",
+  "properties": {
+    "status": {
+      "const": "ok",
+      "default": "ok",
+      "description": "健康状态常量",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "title": "HealthyResult",
+  "type": "object"
+}
+```
 
 ## 路由 hero
 ### hero.create

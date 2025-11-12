@@ -1,7 +1,14 @@
 from __future__ import annotations
 from uuid import uuid4
+from typing import Literal
 from pydantic import BaseModel, Field
 from .databases import app_db
+
+
+class HealthyResult(BaseModel):
+    """健康响应"""
+
+    status: Literal["ok"] = Field("ok", description="健康状态常量")
 
 
 class BaseHero(BaseModel):
