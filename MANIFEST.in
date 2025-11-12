@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include src/okstdio *.py
+include src/okstdio/py.typed
+recursive-include example *.py *.md
+exclude example/assets/*
+prune tests
+prune **/__pycache__
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+
