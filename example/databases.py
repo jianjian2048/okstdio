@@ -47,7 +47,7 @@ class AppDB:
             "UPDATE hero SET level = ? WHERE id = ? AND hero_name = ?", update_data
         )
         self.conn.commit()
-        return self.get_hero(hero_name)
+        return self.get_hero(hero_name)[2]
 
     def close(self):
         self.conn.close()

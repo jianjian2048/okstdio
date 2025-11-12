@@ -6,8 +6,15 @@ import os
 import json
 from typing import Optional
 import logging
+import io
 
 logger = logging.getLogger("okstdio.server.stream")
+
+# 在 Windows 上强制使用 UTF-8 编码
+if os.name == "nt":
+    # 重新包装 stdin 和 stdout 为 UTF-8
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 
 
 class PackStreamReader:

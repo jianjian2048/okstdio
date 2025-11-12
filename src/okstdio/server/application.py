@@ -20,6 +20,7 @@ class IOWrite:
         self.__app = app
 
     async def write(self, response: JSONRPCResponse | dict) -> None:
+        """由于你需要自己组织响应的 ID 因此你最好传入 JSONRPCResponse"""
         if isinstance(response, dict):
             response = JSONRPCResponse(**response)
         await self.__app.write_line(response)
@@ -69,7 +70,7 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
 
                 func = current.methods.get(head)
                 if func is None:
-                    raise RPCMethodNotFoundError(f"没有找到方法: {head}")
+                    raise RPCMethodNotFoundError(data=None, from_id=json_rpc_request.id)
 
                 async def handler(request: JSONRPCRequest):
                     return await self.__execute_method(func, request.params, request.id)
@@ -83,7 +84,7 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
 
             child = current.sub_routers.get(head)
             if child is None:
-                raise RPCMethodNotFoundError(f"没有找到子路由: {head}")
+                raise RPCMethodNotFoundError(data=None, from_id=json_rpc_request.id)
 
             return await dispatch(child, tail)
 

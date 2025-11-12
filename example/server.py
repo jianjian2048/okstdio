@@ -1,5 +1,8 @@
-import logging
+from ast import Dict
+
 import asyncio
+import random
+import logging
 from logging.handlers import RotatingFileHandler
 from typing import Annotated
 from pydantic import BaseModel, Field
@@ -19,12 +22,14 @@ LOG_HANDLER = RotatingFileHandler(
     backupCount=1,
     encoding="utf-8",
 )
-logging.basicConfig(
-    format=FORMAT,
-    datefmt=DATEFMT,
-    level=logging.INFO,
-    handlers=[LOG_HANDLER],
-)
+LOG_HANDLER.setFormatter(logging.Formatter(FORMAT, DATEFMT))
+
+# 配置 root logger，确保不输出到 stdout
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.handlers.clear()  # 清除所有默认 handler
+root_logger.addHandler(LOG_HANDLER)
+
 logger = logging.getLogger("server")
 
 # 创建 APP
@@ -33,6 +38,9 @@ app = RPCServer("example_server", label="示例服务器")
 
 @app.add_middleware(label="请求日志")
 async def logmw(request: JSONRPCRequest, call_next):
+    """日志文件路径: `/example/assets/app.log`
+    日志输出格式: `[%(asctime)s] %(levelname)s @%(name)s > %(message)s`
+    """
     logger.info(f"收到请求: {request.model_dump_json()}")
     res = await call_next(request)
     return res
@@ -40,20 +48,14 @@ async def logmw(request: JSONRPCRequest, call_next):
 
 @app.add_method(name="healthy", label="健康")
 def healthy() -> HealthyResult:
-    """返回服务器是否健康
-
-    return :
-    ```json
-    {"status": "ok"}
-    ```
-    """
+    """返回服务器是否健康 `{"status": "ok"}`"""
     return HealthyResult()
 
 
 hero_router = RPCRouter(prefix="hero", label="英雄方法")
 
 
-@hero_router.add_method(name="create")
+@hero_router.add_method(name="create", label="创建英雄")
 def create(hero: CreateHero) -> PublicHero | JSONRPCServerErrorDetail:
     """创建一个英雄:
     ```json
@@ -63,21 +65,57 @@ def create(hero: CreateHero) -> PublicHero | JSONRPCServerErrorDetail:
     db_hero = app_db.get_hero(hero.hero_name)
     if db_hero:
         return JSONRPCServerErrorDetail(
-            -32001, message=f"英雄 {hero.hero_name} 已经存在,无法再次创建."
+            code=-32001, message=f"英雄 {hero.hero_name} 已经存在,无法再次创建."
         )
-    return hero.create_hero()
+    app_db.create_hero(hero.hero_name)
+    db_hero = app_db.get_hero(hero.hero_name)
+    return PublicHero(hero_id=db_hero[0], hero_name=db_hero[1], level=db_hero[2])
 
 
 async def fighting(fighting_task: FightingTask, io_write: IOWrite):
-    monster = ["史莱姆", "哥布林", "牛头"]
+    monsters = ["史莱姆", "哥布林", "牛头"]
+    experience = 0
     while True:
-        ...
+
+        increase = 0
+        monster = random.choice(monsters)
+        if monster == monsters[0]:
+            fighting_time = random.randint(1, 2)
+            increase = 10
+        elif monster == monsters[1]:
+            fighting_time = random.randint(2, 3)
+            increase = 20
+        else:
+            fighting_time = random.randint(3, 5)
+            increase = 50
+
+        await asyncio.sleep(fighting_time)
+
+        experience = experience + increase
+
+        rewards = f"增加了 {increase} 经验"
+
+        if experience >= 100:
+            experience = experience % 100
+            level = app_db.hero_upgrade(fighting_task.hero.hero_name)
+            fighting_task.hero.level = level
+            rewards += f", 升级了! 当前等级 {fighting_task.hero.level}."
+
+        response = JSONRPCResponse(
+            id=fighting_task.task_id,
+            result=FightingResult(
+                fighting_news=f"{fighting_task.hero.hero_name} 击败了 {monster}, 耗时 {fighting_time}",
+                rewards=rewards,
+            ),
+        )
+        logger.info(f"战斗结果: {fighting_task.hero.hero_name} vs {monster}")
+        await io_write.write(response)
 
 
 tasks = {}
 
 
-@hero_router.add_method(name="dungeon")
+@hero_router.add_method(name="dungeon", label="开始战斗")
 async def dungeon(
     hero_name: Annotated[
         str, Field(..., description="英雄名称")
@@ -92,13 +130,29 @@ async def dungeon(
     hero = app_db.get_hero(hero_name)
     if not hero:
         return JSONRPCServerErrorDetail(
-            -32002, message=f"英雄 {hero.hero_name} 不存在."
+            code=-32002, message=f"英雄 {hero_name} 不存在."
         )
     hero = PublicHero(hero_id=hero[0], hero_name=hero[1], level=hero[2])
     fighting_task = FightingTask(hero=hero)
     task = asyncio.create_task(fighting(fighting_task, io_write))
     tasks[fighting_task.task_id] = task
+    logger.info(fighting_task)
     return fighting_task
+
+
+@hero_router.add_method(name="stop_dungeon", label="停止战斗")
+async def stop_dungeon(
+    task_id: Annotated[str, Field(..., description="战斗的ID")],
+) -> bool:
+    """通过战斗的ID停止"""
+    task = tasks.get(task_id, None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    return True
 
 
 app.include_router(hero_router)

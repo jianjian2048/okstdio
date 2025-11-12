@@ -2,7 +2,6 @@ from __future__ import annotations
 from uuid import uuid4
 from typing import Literal
 from pydantic import BaseModel, Field
-from .databases import app_db
 
 
 class HealthyResult(BaseModel):
@@ -16,18 +15,23 @@ class BaseHero(BaseModel):
 
 
 class PublicHero(BaseHero):
+    """英雄"""
+
     hero_id: int | None = Field(None, description="英雄ID")
     level: int = Field(..., ge=0, le=50, description="等级 0-50")
 
 
 class CreateHero(BaseHero):
+    """创建英雄"""
 
-    def create_hero(self) -> PublicHero:
-        app_db.create_hero(self.hero_name)
-        hero = app_db.get_hero(self.hero_name)
-        return PublicHero(hero_id=hero[0], hero_name=hero[1], level=hero[2])
+    pass
 
 
 class FightingTask(BaseModel):
     task_id: str = Field(default_factory=lambda: uuid4().hex, description="任务ID")
     hero: PublicHero = Field(..., description="英雄")
+
+
+class FightingResult(BaseModel):
+    fighting_news: str = Field(..., description="战斗信息")
+    rewards: str = Field(..., description="战利品")

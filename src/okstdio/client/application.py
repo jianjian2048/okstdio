@@ -34,6 +34,12 @@ class RPCClient:
         if self._listen_queue.get(listen_id):
             return
         self._listen_queue[listen_id] = asyncio.Queue()
+        return self._listen_queue[listen_id]
+
+    def get_listen_queue(self, listen_id: int | str):
+        if not self._listen_queue.get(listen_id):
+            return None
+        return self._listen_queue[listen_id]
 
     def del_listen_queue(self, listen_id: int | str):
         self._listen_queue.pop(listen_id, None)
@@ -48,11 +54,18 @@ class RPCClient:
                 response_line = await asyncio.wait_for(
                     self.process.stdout.readline(), timeout=1.0
                 )
+
                 if not response_line:
                     self.logger.debug("连接已断开")
                     break
 
-                response_text = response_line.decode("utf-8").strip()
+                try:
+                    response_text = response_line.decode("utf-8").strip()
+                    self.logger.debug(response_text)
+                except UnicodeDecodeError as e:
+                    self.logger.warning(f"解码错误，跳过此行: {e}")
+                    continue
+
                 if not response_text:
                     continue
 
@@ -152,12 +165,18 @@ class RPCClient:
             else:
                 cmd = [sys.executable, "-m", app, *extra_args]
 
+            # 设置环境变量强制使用 UTF-8 编码
+            env = os.environ.copy()
+            if os.name == "nt":
+                env["PYTHONIOENCODING"] = "utf-8"
+
             self.process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=creationflags,
+                env=env,
             )
 
             # 等待子进程启动
