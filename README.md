@@ -289,24 +289,6 @@ async def long_task(io_write: IOWrite) -> dict:
 - **Python 3.10+**：利用现代 Python 特性
 - **Pydantic 2.x**：数据验证和序列化
 - **asyncio**：异步 I/O 支持
-- **Jinja2**：文档模板引擎（可选）
-
-## 开发
-
-```bash
-# 克隆仓库
-git clone https://github.com/yourusername/okstdio.git
-cd okstdio
-
-# 安装开发依赖
-uv sync --dev
-
-# 运行测试
-pytest tests/
-
-# 运行示例
-python -m example.client
-```
 
 ## 许可证
 
