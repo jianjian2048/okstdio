@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Callable, Any, get_origin, get_args
 from pathlib import Path
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if TYPE_CHECKING:
     from .router import RPCRouter

@@ -5,13 +5,25 @@
 ## 全局中间件
 ### logmw `请求日志`
 
-> 日志文件路径: `/example/assets/app.log`
-> 日志输出格式: `[%(asctime)s] %(levelname)s @%(name)s > %(message)s`
+> 请求日志中间件
+> 
+> 记录所有收到的请求到日志文件
+> 日志文件路径: /example/assets/app.log
+> 日志输出格式: [%(asctime)s] %(levelname)s @%(name)s > %(message)s
+> 
+> Args:
+>     request: JSON-RPC 请求对象
+>     call_next: 调用下一个中间件或处理函数
 
 
 ## 顶层方法
 ### healthy `健康`
-> 返回服务器是否健康 `{"status": "ok"}`
+> 健康检查接口
+> 
+> 用于检查服务器是否正常运行
+> 
+> Returns:
+>     HealthyResult: {"status": "ok"}
 
 **参数:**
 
@@ -22,7 +34,9 @@
 > **类型:** `HealthyResult`
 >
 > **说明:**
->> 健康响应
+>> 健康检查响应模型
+>>     
+>>     用于 healthy 接口的返回值
 >
 > **字段:**
 >
@@ -32,10 +46,27 @@
 
 ## 路由 hero
 ### hero.create `创建英雄`
-> 创建一个英雄:
-> ```json
-> {"jsonrpc": "2.0", "method": "hero.create", "params": {"hero": {"hero_name": "英雄名称"}}, "id": 1}
-> ```
+> 创建一个英雄
+> 
+> 初始等级为 0，英雄名称必须唯一
+> 
+> Args:
+>     hero: 创建英雄的参数(只需要 hero_name）
+> 
+> Returns:
+>     PublicHero: 创建成功，返回英雄信息
+>     JSONRPCServerErrorDetail: 创建失败(名称重复）
+> 
+> Example:
+>     请求:
+>     ```json
+>     {"jsonrpc": "2.0", "method": "hero.create", "params": {"hero": {"hero_name": "张三"}}, "id": 1}
+>     ```
+> 
+>     成功响应:
+>     ```json
+>     {"jsonrpc": "2.0", "result": {"hero_id": 1, "hero_name": "张三", "level": 0}, "id": 1}
+>     ```
 
 **参数:**
 
@@ -55,7 +86,10 @@
 > **类型:** `PublicHero`
 >
 > **说明:**
->> 英雄
+>> 公开的英雄信息
+>>     
+>>     用于返回给客户端的英雄数据
+>>     不包含敏感信息
 >
 > **字段:**
 >
@@ -92,12 +126,18 @@
 
 > **类型:** `FightingTask`
 >
+> **说明:**
+>> 战斗任务信息
+>>     
+>>     当英雄进入副本时返回的任务对象
+>>     包含任务ID（用于后续监听战斗结果）和英雄信息
+>
 > **字段:**
 >
 >> | 字段名 | 类型 | 必填 | 默认值 | 描述 |
 >> | --- | --- | --- | --- | --- |
 >> | `task_id` | string | 否 | - | 任务ID |
->> | `hero` | PublicHero | 是 | - | - |
+>> | `hero` | PublicHero | 是 | - | 英雄 |
 >>
 >> **引用模型: `PublicHero`**
 >>
