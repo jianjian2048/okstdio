@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from .stream import StdioStream
 from .router import RPCRouter
 from .middleware import MiddlewareManager
+from .appdoc import AppDoc
 from ..general.jsonrpc_model import *
 from ..general.errors import *
 
@@ -24,7 +25,7 @@ class IOWrite:
         await self.__app.write_line(response)
 
 
-class RPCServer(StdioStream, RPCRouter):
+class RPCServer(StdioStream, RPCRouter, AppDoc):
     """RPC 服务器"""
 
     def __init__(
@@ -121,6 +122,11 @@ class RPCServer(StdioStream, RPCRouter):
             else:
                 result = func(**bound_args)
 
+            # 如果返回的类型是 JSONRPCErrorDetail 则结果错误.
+            # 这是函数内部判断出错误时应返回的对象.
+            if isinstance(result, JSONRPCErrorDetail):
+                return JSONRPCError(id=request_id, error=result)
+
             return JSONRPCResponse(id=request_id, result=result)
 
         except ValidationError as exc:
@@ -131,7 +137,7 @@ class RPCServer(StdioStream, RPCRouter):
                 from_id=request_id,
             )
 
-    async def _run(self):
+    async def _runserver(self):
         try:
             while True:
                 try:
@@ -143,13 +149,14 @@ class RPCServer(StdioStream, RPCRouter):
                     await self.write_line(result)
                 except RPCError as e:
                     error = JSONRPCError(
-                        id=e.from_id, error=RPCErrorDetail.model_validate(e.to_dict())
+                        id=e.from_id,
+                        error=JSONRPCErrorDetail.model_validate(e.to_dict()),
                     )
                     await self.write_line(error)
         except Exception as e:
             server_error = RPCServerError(code=-32099, message=f"未处理异常: {str(e)}")
             error = JSONRPCError(
-                error=RPCErrorDetail.model_validate(server_error.to_dict())
+                error=JSONRPCErrorDetail.model_validate(server_error.to_dict())
             )
             await self.write_line(error)
         finally:
@@ -157,124 +164,4 @@ class RPCServer(StdioStream, RPCRouter):
                 self.close()
 
     def runserver(self):
-        asyncio.run(self._run())
-
-    def get_docs_json(self) -> dict:
-        """生成当前服务的文档描述数据"""
-
-        def is_pydantic_model(annotation: Any) -> bool:
-            return isinstance(annotation, type) and issubclass(annotation, BaseModel)
-
-        def serialize_params(func: Callable):
-            params_data = []
-            signature = inspect.signature(func)
-            for param in signature.parameters.values():
-                annotation = param.annotation
-
-                # 跳过内部注入类型
-                if annotation is IOWrite:
-                    continue
-
-                item: dict[str, Any] = {
-                    "name": param.name,
-                    "kind": param.kind.name,
-                    "required": param.default is inspect._empty,
-                }
-
-                if annotation is inspect._empty:
-                    item["type"] = None
-                elif is_pydantic_model(annotation):
-                    item["type"] = annotation.__name__
-                    item["schema"] = annotation.model_json_schema()
-                elif isinstance(annotation, type):
-                    item["type"] = annotation.__name__
-                else:
-                    item["type"] = str(annotation)
-
-                default = param.default
-                if default is inspect._empty:
-                    item["default"] = None
-                else:
-                    try:
-                        json.dumps(default)
-                        item["default"] = default
-                    except TypeError:
-                        item["default"] = repr(default)
-
-                params_data.append(item)
-            return params_data
-
-        def is_custom_type(annotation: Any) -> bool:
-            if not isinstance(annotation, type):
-                return False
-            return annotation.__module__ not in {"builtins", "typing"}
-
-        def serialize_results(func: Callable):
-            signature = inspect.signature(func)
-            annotation = signature.return_annotation
-
-            if annotation is inspect._empty or annotation is None:
-                return []
-
-            item: dict[str, Any] = {}
-            if is_pydantic_model(annotation):
-                item["type"] = annotation.__name__
-                item["schema"] = annotation.model_json_schema()
-            elif isinstance(annotation, type):
-                item["type"] = annotation.__name__
-            else:
-                item["type"] = str(annotation)
-
-            if isinstance(annotation, type) and is_custom_type(annotation):
-                doc = inspect.getdoc(annotation) or ""
-                if doc:
-                    item["doc"] = doc
-
-            return [item]
-
-        def walk(router: RPCRouter, full_prefix: str = ""):
-            methods = []
-            for method_name, (func, label) in router.methods.items():
-                path = ".".join(filter(None, [full_prefix, method_name]))
-                methods.append(
-                    {
-                        "name": method_name,
-                        "label": label,
-                        "path": path,
-                        "doc": inspect.getdoc(func) or "",
-                        "params": serialize_params(func),
-                        "results": serialize_results(func),
-                    }
-                )
-
-            middlewares = []
-            for middleware, label in getattr(router.middlewares, "get_full")():
-                middlewares.append(
-                    {
-                        "name": middleware.__name__,
-                        "label": label,
-                        "doc": inspect.getdoc(middleware) or "",
-                    }
-                )
-
-            routers = {}
-            for prefix, sub_router in router.sub_routers.items():
-                sub_prefix = ".".join(filter(None, [full_prefix, prefix]))
-                routers[prefix] = walk(sub_router, sub_prefix)
-
-            return {
-                "label": getattr(router, "label", ""),
-                "methods": methods,
-                "middlewares": middlewares,
-                "routers": routers,
-            }
-
-        tree = walk(self, "")
-        return {
-            "server_name": self.server_name,
-            "version": self.version,
-            "label": getattr(self, "label", ""),
-            "methods": tree["methods"],
-            "middlewares": tree["middlewares"],
-            "routers": tree["routers"],
-        }
+        asyncio.run(self._runserver())

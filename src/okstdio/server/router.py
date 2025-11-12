@@ -108,10 +108,3 @@ class RPCRouter:
         if router.prefix in self.sub_routers:
             raise ValueError(f"前缀为 {router.prefix} 的路由器已存在.")
         self.sub_routers[router.prefix] = router
-
-    def method_tree(self):
-        """获取方法树, 递归获取子路由器的方法"""
-        tree = self.methods
-        for prefix, router in self.sub_routers.items():
-            tree[prefix] = router.method_tree()
-        return tree

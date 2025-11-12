@@ -29,11 +29,15 @@ class JSONRPCResponse(BaseJSONRPC):
     result: Any = Field(description="响应结果")
 
 
-class RPCErrorDetail(BaseModel):
+class JSONRPCErrorDetail(BaseModel):
     code: int = Field(description="错误码")
     message: str = Field(description="错误信息")
     data: dict | list | None = Field(default=None, description="错误数据")
 
 
+class JSONRPCServerErrorDetail(JSONRPCErrorDetail):
+    code: int = Field(-32000, ge=-32099, le=-32000, description="错误码")
+
+
 class JSONRPCError(BaseJSONRPC):
-    error: RPCErrorDetail = Field(description="错误详情")
+    error: JSONRPCErrorDetail = Field(description="错误详情")

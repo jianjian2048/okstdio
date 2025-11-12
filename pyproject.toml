@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [{ name = "jianjian", email = "jianjian2048@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
+    "jinja2>=3.1.6",
     "pydantic>=2.12.4",
 ]
 

@@ -7,7 +7,6 @@ import json
 from pydantic import BaseModel, Field
 from okstdio.server.application import RPCServer, IOWrite
 from okstdio.server.router import RPCRouter
-
 from okstdio.general.jsonrpc_model import JSONRPCRequest, JSONRPCResponse
 from okstdio.general.errors import *
 
@@ -32,6 +31,13 @@ app = RPCServer(server_name="test_server")
 
 @app.add_middleware(label="日志中间件")
 async def log_middleware(request: JSONRPCRequest, call_next: Callable):
+    """日志中间件
+
+    这个中间件非常厉害,非常非常厉害
+    ```python
+    print(f"[LOG]: {request}")
+    ```
+    """
     print(f"[LOG]: {request}")
     # raise RPCError(code=-32600, message="test error")
     res = await call_next(request)
@@ -40,7 +46,14 @@ async def log_middleware(request: JSONRPCRequest, call_next: Callable):
 
 @app.add_method("index", label="主方法")
 async def index() -> str:
-    """测试主方法"""
+    """测试主方法
+
+    这个主方法固定返回 "Hello, World!"
+
+    ```python
+    print("Hello, World!")
+    ```
+    """
     return "Hello, World!"
 
 
@@ -118,7 +131,8 @@ async def main():
 
 
 if __name__ == "__main__":
+    with open("doc.md", "w", encoding="utf-8") as f:
+        f.write(app.docs_markdown())
 
-    with open("test.json", "w", encoding="utf-8") as f:
-        doc = app.docs()
-        json.dump(doc, f, ensure_ascii=False, indent=4)
+    with open("doc.json", "w", encoding="utf-8") as f:
+        json.dump(app.docs_json(), f, ensure_ascii=False, indent=4)

@@ -13,10 +13,10 @@ class MiddlewareManager:
     user_router = RPCRouter("user")
 
     @user_router.register_middleware()
-    async def user_middleware(req, call_next):
-        print(f"[user] 前处理: {req}")
-        res = await call_next(req)
-        print(f"[user] 后处理: {req}")
+    async def user_middleware(request, call_next):
+        print(f"[user] 前处理: {request}")
+        res = await call_next(request)
+        print(f"[user] 后处理: {request}")
         return res
     ```
 
