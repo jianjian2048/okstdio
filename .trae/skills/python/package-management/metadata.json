@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "name": "package-management",
+  "displayName": "Python Package Management",
+  "description": "Guidance for Python package management, dependency resolution, virtual environments, and lockfiles.",
+  "author": "Tyler-R-Kendrick",
+  "license": "MIT",
+  "date": "February 2026",
+  "compatibility": "claude, copilot, cursor",
+  "references": [
+    {
+      "title": "pip Documentation",
+      "url": "https://pip.pypa.io/en/stable/"
+    },
+    {
+      "title": "uv Documentation",
+      "url": "https://docs.astral.sh/uv/"
+    },
+    {
+      "title": "Poetry Documentation",
+      "url": "https://python-poetry.org/"
+    },
+    {
+      "title": "Python Packaging User Guide",
+      "url": "https://packaging.python.org/en/latest/"
+    }
+  ]
+}
