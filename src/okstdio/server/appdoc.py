@@ -1,4 +1,7 @@
-"""应用程序文档"""
+"""应用程序文档模块
+
+提供 API 文档生成功能，支持生成 JSON 格式和 Markdown 格式的文档。
+"""
 
 from __future__ import annotations  # type: ignore
 import inspect
@@ -13,11 +16,68 @@ if TYPE_CHECKING:
     from .application import RPCServer
 
 
-# region 应用程序文档
 class AppDoc:
+    """应用程序文档生成器
+
+    提供 API 文档生成功能，支持：
+        - 生成 JSON 格式的文档数据
+        - 生成 Markdown 格式的接口文档
+
+    继承自此类的类可以获得文档生成功能。
+
+    例子：
+        ```python
+        from okstdio.server import RPCServer
+
+        app = RPCServer("my_server")
+
+        @app.add_method()
+        def hello(name: str) -> str:
+            return f"Hello, {name}!"
+
+        # 生成 JSON 文档
+        json_doc = app.docs_json()
+
+        # 生成 Markdown 文档
+        app.docs_markdown()  # 会保存到文件 my_server.md
+        ```
+    """
 
     def docs_json(self: "RPCServer") -> dict:
-        """生成当前服务的文档描述数据"""
+        """生成当前服务的文档描述数据
+
+        生成包含所有方法、参数、返回值等信息的 JSON 格式文档。
+
+        Returns:
+            dict: 文档数据字典，包含：
+                - server_name: 服务器名称
+                - version: 服务器版本
+                - label: 服务器标签
+                - methods: 顶层方法列表
+                - middlewares: 中间件列表
+                - routers: 路由器列表
+
+        文档结构：
+            ```json
+            {
+                "server_name": "my_server",
+                "version": "v0.1.0",
+                "label": "示例服务器",
+                "methods": [
+                    {
+                        "name": "hello",
+                        "label": "问候",
+                        "path": "hello",
+                        "doc": "问候方法",
+                        "params": [...],
+                        "results": [...]
+                    }
+                ],
+                "middlewares": [...],
+                "routers": {...}
+            }
+            ```
+        """
 
         def is_pydantic_model(annotation: Any) -> bool:
             return isinstance(annotation, type) and issubclass(annotation, BaseModel)
@@ -200,9 +260,44 @@ class AppDoc:
             "routers": tree["routers"],
         }
 
-    def docs_markdown(self: "RPCServer") -> str:
-        """生成 Markdown 形式的接口文档."""
+    def docs_markdown(self: "RPCServer"):
+        """生成 Markdown 形式的接口文档.
 
+        生成完整的 Markdown 格式 API 文档，并保存到文件。
+        文件名格式：{server_name}.md
+
+        Returns:
+            str: 生成的 Markdown 文档内容
+
+        文档结构：
+            # SERVER_NAME API 文档
+            - 版本: `v0.1.0`
+            - 描述: server_label
+
+            ## 全局中间件
+            ...
+
+            ## 顶层方法
+            ...
+
+            ## 路由 {prefix}
+            ...
+
+        例子：
+            ```python
+            from okstdio.server import RPCServer
+
+            app = RPCServer("my_server")
+
+            @app.add_method()
+            def hello(name: str) -> str:
+                return f"Hello, {name}!"
+
+            # 生成并保存文档
+            app.docs_markdown()
+            # 会保存到文件 my_server.md
+            ```
+        """
         doc = self.docs_json()
         lines: list[str] = []
 

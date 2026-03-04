@@ -1,4 +1,8 @@
-"""应用程序"""
+"""RPC 服务器模块
+
+提供基于 Stdio 的 JSON-RPC 服务器实现，用于处理来自父进程的请求。
+服务器通过标准输入输出与父进程进行 JSON-RPC 协议的消息交换。
+"""
 
 import inspect
 import json
@@ -14,27 +18,109 @@ from ..general.errors import *
 
 
 class IOWrite:
-    """写入依赖, 用于在方法中注入写入依赖, 可以在方法内主动写入响应"""
+    """写入依赖，用于在方法中注入写入依赖
+    
+    可以在方法内主动写入响应到父进程。
+    通常用于需要服务器主动推送消息的场景（如实时更新、进度通知等）。
+    
+    例子：
+        ```python
+        @app.add_method()
+        async def long_task(io_write: IOWrite):
+            # 执行长时间任务
+            for i in range(10):
+                # 推送进度
+                await io_write.write({"result": f"进度: {i * 10}%"})
+                await asyncio.sleep(1)
+        ```
+    
+    Args:
+        app: 关联的 RPCServer 实例
+    """
 
     def __init__(self, app: "RPCServer"):
+        """初始化 IOWrite
+        
+        Args:
+            app: 关联的 RPCServer 实例
+        """
         self.__app = app
 
     async def write(self, response: JSONRPCResponse | dict) -> None:
-        """由于你需要自己组织响应的 ID 因此你最好传入 JSONRPCResponse"""
+        """写入响应到父进程
+        
+        Args:
+            response: 响应对象，可以是 JSONRPCResponse 实例或字典
+        
+        例子：
+            ```python
+            # 使用字典
+            await io_write.write({"result": {"status": "ok"}})
+            
+            # 使用 JSONRPCResponse
+            await io_write.write(JSONRPCResponse(result={"status": "ok"}))
+            ```
+        """
         if isinstance(response, dict):
             response = JSONRPCResponse(**response)
         await self.__app.write_line(response)
 
 
 class RPCServer(StdioStream, RPCRouter, AppDoc):
-    """RPC 服务器"""
+    """RPC 服务器
+    
+    基于 Stdio 的 JSON-RPC 服务器，用于处理来自父进程的请求。
+    服务器通过标准输入输出与父进程进行 JSON-RPC 协议的消息交换。
+    
+    核心功能：
+        - 路由注册和分发
+        - 中间件支持
+        - 参数自动校验（Pydantic 模型）
+        - 依赖注入（如 IOWrite）
+        - 自动生成 API 文档
+    
+    继承的基类：
+        - StdioStream: 提供标准输入输出的读写能力
+        - RPCRouter: 提供路由注册和分发功能
+        - AppDoc: 提供 API 文档生成功能
+    
+    例子：
+        ```python
+        from okstdio.server import RPCServer, RPCRouter, IOWrite
+        
+        app = RPCServer("my_server", label="示例服务器")
+        
+        @app.add_method(name="hello", label="问候")
+        def hello(name: str) -> str:
+            return f"Hello, {name}!"
+        
+        # 创建子路由
+        user_router = RPCRouter("user")
+        @user_router.add_method()
+        def get_user(user_id: int) -> dict:
+            return {"id": user_id, "name": "张三"}
+        
+        app.include_router(user_router)
+        
+        if __name__ == "__main__":
+            app.runserver()
+        ```
+    
+    Args:
+        server_name: 服务器名称，默认 "app"
+        label: 服务器标签/描述，默认 ""
+        version: 服务器版本，默认 "v0.1.0"
+    """
 
     def __init__(
         self, server_name: str = "app", label: str = "", version: str = "v0.1.0"
     ):
-        """
+        """初始化 RPC 服务器
+        
         Args:
-            server_name: 服务器名称 默认 "app"
+            server_name: 服务器名称，默认 "app"
+            label: 服务器标签/描述，默认 ""
+            version: 服务器版本，默认 "v0.1.0"
         """
         self.server_name = server_name
         self.version = version
@@ -42,11 +128,31 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
         StdioStream.__init__(self)
         RPCRouter.__init__(self, server_name, label)
 
-    async def handle_request(self, request: str) -> JSONRPCResponse:
-        """处理请求"""
-
+    async def handle_request(self, request_string: str) -> JSONRPCResponse:
+        """处理 JSON-RPC 请求
+        
+        解析请求、分发到对应的处理函数、返回响应。
+        该方法会自动处理异常并返回适当的错误响应。
+        
+        Args:
+            request_string: JSON 字符串格式的请求
+        
+        Returns:
+            JSONRPCResponse: 响应对象
+        
+        Raises:
+            RPCError: 当请求处理失败时
+        
+        处理流程：
+            1. 解析 JSON 请求
+            2. 验证 JSON-RPC 2.0 格式
+            3. 分割路由路径
+            4. 收集中间件
+            5. 分发到处理函数
+            6. 处理异常并返回错误响应
+        """
         try:
-            request: dict = json.loads(request)
+            request: dict = json.loads(request_string)
         except json.JSONDecodeError:
             # 抛出语法解析错误
             raise RPCParseError()
@@ -93,7 +199,28 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
     async def __execute_method(
         self, func: Callable, params: Any, request_id: str | int
     ):
-        """执行方法"""
+        """执行方法
+        
+        解析函数签名、自动注入依赖、执行函数并返回结果。
+        
+        Args:
+            func: 要执行的函数
+            params: 请求参数
+            request_id: 请求 ID
+        
+        Returns:
+            JSONRPCResponse: 响应对象
+        
+        支持的参数类型：
+            - Pydantic 模型：自动从字典创建实例
+            - IOWrite：自动注入写入依赖
+            - 普通类型：直接从 params 中获取
+            - 默认参数：使用函数默认值
+        
+        异常处理：
+            - ValidationError: 转换为 RPCInvalidParamsError
+            - 其他异常：根据返回类型处理
+        """
         try:
             sig = inspect.signature(func)
             # 如果函数使用 Pydantic 参数，则自动校验
@@ -139,6 +266,13 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
             )
 
     async def _runserver(self):
+        """运行服务器主循环
+        
+        持续从标准输入读取请求，处理后写入标准输出。
+        循环会在以下情况停止：
+            - 对端关闭连接（EOF）
+            - 发生未处理的异常
+        """
         try:
             while True:
                 try:
@@ -165,4 +299,15 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
                 self.close()
 
     def runserver(self):
+        """启动服务器
+        
+        启动异步服务器主循环。
+        该方法会阻塞直到服务器停止。
+        
+        例子：
+            ```python
+            if __name__ == "__main__":
+                app.runserver()
+            ```
+        """
         asyncio.run(self._runserver())
