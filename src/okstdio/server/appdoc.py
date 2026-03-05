@@ -22,6 +22,7 @@ class AppDoc:
     提供 API 文档生成功能，支持：
         - 生成 JSON 格式的文档数据
         - 生成 Markdown 格式的接口文档
+        - 获取服务器方法树结构
 
     继承自此类的类可以获得文档生成功能。
 
@@ -38,18 +39,21 @@ class AppDoc:
         # 生成 JSON 文档
         json_doc = app.docs_json()
 
+        # 获取方法树
+        method_tree = app.get_method_tree()
+
         # 生成 Markdown 文档
         app.docs_markdown()  # 会保存到文件 my_server.md
         ```
     """
 
-    def docs_json(self: "RPCServer") -> dict:
-        """生成当前服务的文档描述数据
+    def get_method_tree(self: "RPCServer") -> dict:
+        """获取服务器的方法树结构
 
-        生成包含所有方法、参数、返回值等信息的 JSON 格式文档。
+        返回包含所有方法、参数、返回值等信息的 JSON 格式数据。
 
         Returns:
-            dict: 文档数据字典，包含：
+            dict: 方法树数据字典，包含：
                 - server_name: 服务器名称
                 - version: 服务器版本
                 - label: 服务器标签
@@ -57,7 +61,7 @@ class AppDoc:
                 - middlewares: 中间件列表
                 - routers: 路由器列表
 
-        文档结构：
+        方法树结构：
             ```json
             {
                 "server_name": "my_server",
@@ -216,6 +220,10 @@ class AppDoc:
         def walk(router: RPCRouter, full_prefix: str = ""):
             methods = []
             for method_name, (func, label) in router.methods.items():
+                # 跳过系统方法
+                if method_name == "__system__":
+                    continue
+                
                 path = ".".join(filter(None, [full_prefix, method_name]))
                 methods.append(
                     {
@@ -259,6 +267,43 @@ class AppDoc:
             "middlewares": tree["middlewares"],
             "routers": tree["routers"],
         }
+
+    def docs_json(self: "RPCServer") -> dict:
+        """生成当前服务的文档描述数据（已废弃，请使用 get_method_tree()）
+
+        生成包含所有方法、参数、返回值等信息的 JSON 格式文档。
+
+        Returns:
+            dict: 文档数据字典，包含：
+                - server_name: 服务器名称
+                - version: 服务器版本
+                - label: 服务器标签
+                - methods: 顶层方法列表
+                - middlewares: 中间件列表
+                - routers: 路由器列表
+
+        文档结构：
+            ```json
+            {
+                "server_name": "my_server",
+                "version": "v0.1.0",
+                "label": "示例服务器",
+                "methods": [
+                    {
+                        "name": "hello",
+                        "label": "问候",
+                        "path": "hello",
+                        "doc": "问候方法",
+                        "params": [...],
+                        "results": [...]
+                    }
+                ],
+                "middlewares": [...],
+                "routers": {...}
+            }
+            ```
+        """
+        return self.get_method_tree()
 
     def docs_markdown(self: "RPCServer"):
         """生成 Markdown 形式的接口文档.

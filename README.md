@@ -17,6 +17,8 @@ OkStdio 是一个轻量级的 Python 框架，通过标准输入输出（stdin/s
 - ✅ **路由系统**：支持方法前缀和嵌套路由
 - ✅ **自动文档**：自动生成 Markdown 格式的 API 文档
 - ✅ **流式响应**：支持服务器主动推送消息（IOWrite）
+- ✅ **依赖注入**：灵活的依赖注入系统，支持单例/非单例、运行时动态注册
+- ✅ **服务器方法树**：通过 `__system__` 系统方法获取完整的服务器方法树结构
 - ✅ **跨平台**：Windows/Linux/macOS 全平台支持，自动处理编码问题
 
 ## 安装
@@ -171,6 +173,116 @@ def create_user(
     return {"username": username, "age": age}
 ```
 
+### 6. 依赖注入
+
+灵活的依赖注入系统，支持自定义依赖、单例/非单例管理、运行时动态注册：
+
+```python
+from okstdio.server import RPCServer
+import uiautomator2 as u2
+
+app = RPCServer("app")
+
+# 方式一：服务器创建时注册（已知配置）
+app.register_dependency(
+    u2.Device, 
+    lambda: u2.connect("192.168.1.100:5555"),
+    singleton=True  # 单例模式，全局只创建一个实例
+)
+
+@app.add_method()
+def click_device(device: u2.Device) -> dict:
+    device.click(0.5, 0.5)
+    return {"status": "clicked"}
+
+# 方式二：延迟注册（运行时动态注册）
+@app.add_method()
+def init_device(device_ip: str, device_port: int) -> dict:
+    device = u2.connect(f"{device_ip}:{device_port}")
+    app.register_dependency(u2.Device, lambda: device, singleton=True)
+    return {"status": "device registered"}
+
+# 方式三：使用字符串键（工厂函数）
+app.register_dependency(
+    "db_factory",
+    lambda: lambda db_url: Database(db_url),
+    singleton=True
+)
+
+@app.add_method()
+def use_db() -> dict:
+    factory = app.get_dependency("db_factory")
+    db = factory("sqlite:///db.sqlite")
+    return {"status": "ok"}
+
+# IOWrite 自动注册，无需手动注册
+@app.add_method()
+async def long_task(io_write: IOWrite):
+    await io_write.write({"result": "progress"})
+```
+
+### 7. 服务器方法树
+
+通过 `__system__` 系统方法获取完整的服务器方法树结构：
+
+#### 服务器端
+
+服务器会自动注册 `__system__` 系统方法，无需手动注册：
+
+```python
+from okstdio.server import RPCServer
+
+app = RPCServer("my_server", label="我的服务器", version="v1.0.0")
+
+@app.add_method(name="hello", label="问候")
+def hello(name: str) -> str:
+    """问候方法"""
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    app.runserver()
+```
+
+#### 客户端
+
+使用 `get_server_methods()` 方法获取服务器方法树：
+
+```python
+import asyncio
+from okstdio.client import RPCClient
+
+async def main():
+    async with RPCClient("my_client") as client:
+        await client.start("my_server")
+        
+        # 获取服务器方法树
+        method_tree = await client.get_server_methods()
+        print("服务器名称:", method_tree["server_name"])
+        print("服务器版本:", method_tree["version"])
+        print("服务器标签:", method_tree["label"])
+        
+        # 列出所有方法
+        print("\n方法列表:")
+        for method in method_tree["methods"]:
+            print(f"- {method['name']} ({method['path']}): {method['doc']}")
+        
+        # 查看路由
+        print("\n路由信息:")
+        for router_name, router_info in method_tree["routers"].items():
+            print(f"- {router_name}: {len(router_info['methods'])} 个方法")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+方法树结构包含：
+- `server_name`: 服务器名称
+- `version`: 服务器版本
+- `label`: 服务器标签
+- `methods`: 方法列表（包含名称、路径、文档、参数、返回值）
+- `middlewares`: 中间件列表
+- `routers`: 路由器字典（包含子路由和方法）
+
 ## 自动文档生成
 
 OkStdio 可以自动生成 Markdown 格式的 API 文档：
@@ -282,6 +394,35 @@ async def long_task(io_write: IOWrite) -> dict:
             result={"progress": i + 1}
         ))
     return {"status": "completed"}
+```
+
+### 5. 依赖注入最佳实践
+
+**单例模式**（推荐用于设备连接、数据库连接等）：
+```python
+# 全局唯一的设备连接
+app.register_dependency(u2.Device, lambda: u2.connect(), singleton=True)
+```
+
+**非单例模式**（用于临时会话、请求上下文等）：
+```python
+# 每次请求创建新实例
+app.register_dependency(Session, lambda: Session(), singleton=False)
+```
+
+**运行时动态注册**（用于启动时无法确定的依赖）：
+```python
+@app.add_method()
+def init_device(device_ip: str) -> dict:
+    device = u2.connect(device_ip)
+    app.register_dependency(u2.Device, lambda: device, singleton=True)
+    return {"status": "ok"}
+```
+
+**依赖检查**：
+```python
+if app.has_dependency(u2.Device):
+    device = app.get_dependency(u2.Device)
 ```
 
 ## 技术栈

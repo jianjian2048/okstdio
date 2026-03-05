@@ -21,16 +21,16 @@ from ..general.errors import *
 
 class RPCClient:
     """RPC 客户端
-    
+
     基于 Stdio 的 JSON-RPC 客户端，用于与子进程进行通信。
     客户端通过标准输入输出与子进程进行 JSON-RPC 协议的消息交换。
-    
+
     支持的功能：
         - 异步请求/响应模式
         - 监听队列（用于接收服务器主动推送的消息）
         - 自动管理子进程生命周期
         - JSON-RPC 2.0 协议支持
-    
+
     例子：
         ```python
         async def main():
@@ -40,10 +40,10 @@ class RPCClient:
                 response = await future
                 print(response.model_dump_json())
         ```
-    
+
     Args:
         client_name: 客户端名称，用于日志标识，默认 "rpc_client"
-    
+
     Raises:
         RuntimeError: 当客户端未启动时发送请求
         RuntimeError: 当子进程启动失败时
@@ -51,7 +51,7 @@ class RPCClient:
 
     def __init__(self, client_name: str = "rpc_client"):
         """初始化 RPC 客户端
-        
+
         Args:
             client_name: 客户端名称，用于日志标识
         """
@@ -71,13 +71,13 @@ class RPCClient:
 
     def add_listen_queue(self, listen_id: int | str):
         """添加监听队列
-        
+
         用于接收服务器主动推送的消息。当收到的消息 ID 匹配监听队列 ID 时，
         消息会被推入对应的队列中。
-        
+
         Args:
             listen_id: 监听队列的 ID
-        
+
         Returns:
             asyncio.Queue: 创建的监听队列，如果已存在则返回现有队列
         """
@@ -88,10 +88,10 @@ class RPCClient:
 
     def get_listen_queue(self, listen_id: int | str):
         """获取监听队列
-        
+
         Args:
             listen_id: 监听队列的 ID
-        
+
         Returns:
             asyncio.Queue | None: 监听队列，如果不存在则返回 None
         """
@@ -101,18 +101,56 @@ class RPCClient:
 
     def del_listen_queue(self, listen_id: int | str):
         """删除监听队列
-        
+
         Args:
             listen_id: 监听队列的 ID
         """
         self._listen_queue.pop(listen_id, None)
 
+    async def get_server_methods(self) -> dict:
+        """获取服务器方法树
+
+        通过调用服务器的 __system__ 方法获取完整的方法树结构。
+
+        Returns:
+            dict: 服务器方法树字典，包含：
+                - server_name: 服务器名称
+                - version: 服务器版本
+                - label: 服务器标签
+                - methods: 方法列表
+                - middlewares: 中间件列表
+                - routers: 路由器字典
+
+        Raises:
+            RuntimeError: 当客户端未启动时
+
+        例子：
+            ```python
+            async with RPCClient("my_client") as client:
+                await client.start("example.server")
+
+                # 获取服务器方法树
+                method_tree = await client.get_server_methods()
+
+                # 列出所有方法
+                for method in method_tree["methods"]:
+                    print(f"方法：{method['name']}, 路径：{method['path']}")
+
+                # 查看路由
+                for router_name, router_info in method_tree["routers"].items():
+                    print(f"路由：{router_name}, 方法数：{len(router_info['methods'])}")
+            ```
+        """
+        future = await self.send("__system__")
+        response = await future
+        return response.result
+
     async def read_loop(self):
         """读循环
-        
+
         持续从子进程的标准输出读取 JSON-RPC 响应消息。
         根据消息 ID 将响应分发到对应的 Future 或监听队列。
-        
+
         循环会在以下情况停止：
             - 子进程关闭输出流
             - 发生未处理的异常
@@ -174,28 +212,29 @@ class RPCClient:
             except Exception as e:
                 self.logger.exception(f"READ 触发未处理异常: {e}")
                 break
+                
 
     async def send(
         self,
         method: str,
         params: Any = {},
-        request_id: int | str = None,
+        request_id: int | str | None = None,
     ) -> asyncio.Future:
         """发送 JSON-RPC 请求并等待响应
-        
+
         发送请求后返回一个 Future 对象，可以通过 await 等待响应。
-        
+
         Args:
             method: 要调用的 RPC 方法名称
             params: 方法参数，默认为空字典
             request_id: 请求 ID，如果未提供则自动生成 UUID
-        
+
         Returns:
             asyncio.Future: 用于等待响应的 Future 对象
-        
+
         Raises:
             RuntimeError: 当客户端未启动时
-        
+
         例子：
             ```python
             future = await client.send("hero.create", {"hero": {"hero_name": "张三"}})
@@ -217,6 +256,7 @@ class RPCClient:
 
             # 发送请求
             request = JSONRPCRequest(id=request_id, method=method, params=params)
+
             self.process.stdin.write(request.encode("utf-8") + b"\n")
             await self.process.stdin.drain()
 
@@ -224,34 +264,35 @@ class RPCClient:
 
     async def start(self, app: str, *extra_args) -> None:
         """启动子进程
-        
+
         根据提供的应用路径自动判断启动方式：
             - 模块引用（如 "example.server"）：使用 `python -m` 启动
             - Python 脚本（如 "server.py"）：直接执行
             - 可执行文件：直接执行
-        
+
         Args:
             app: 应用程序路径，可以是模块名、脚本路径或可执行文件
             *extra_args: 应用程序启动参数
-        
+
         Raises:
             RuntimeError: 当子进程启动失败时
-        
+
         例子：
             ```python
             # 启动模块
             await client.start("example.server")
-            
+
             # 启动脚本
             await client.start("path/to/server.py")
-            
+
             # 启动可执行文件
             await client.start("./my_server")
-            
+
             # 传递额外参数
             await client.start("example.server", "--port", "8080")
             ```
         """
+
         def _is_module_ref(app: str) -> bool:
             """判断是否python模块"""
             return "." in app and not app.endswith(".py")
@@ -316,10 +357,10 @@ class RPCClient:
 
     async def stop(self) -> None:
         """停止客户端
-        
+
         停止读循环、关闭子进程、清理资源。
         该方法是异步安全的，可以安全地在协程中调用。
-        
+
         清理的资源：
             - 取消读循环任务
             - 关闭子进程

@@ -8,7 +8,7 @@ import asyncio
 import sys
 import os
 import json
-from typing import Optional
+from typing import Optional, Any
 import logging
 import io
 
@@ -88,7 +88,7 @@ class PackStreamWriter:
     例子：
         ```python
         writer = PackStreamWriter()
-        await writer.write("Hello\\n")
+        await writer.write("Hello\n")
         await writer.write(JSONRPCResponse(result="ok"))
         ```
     """
@@ -116,10 +116,10 @@ class PackStreamWriter:
         例子：
             ```python
             # 写入字符串
-            await writer.write("Hello\\n")
+            await writer.write("Hello\n")
             
             # 写入字节
-            await writer.write(b"Hello\\n")
+            await writer.write(b"Hello\n")
             ```
         """
         if isinstance(data, bytes):
@@ -165,7 +165,7 @@ class StdioStream:
         line = await stream.read_line()
         
         # 写入数据
-        await stream.write_line("Hello\\n")
+        await stream.write_line("Hello\n")
         
         # 关闭流
         stream.close()
@@ -189,11 +189,11 @@ class StdioStream:
         line = await self.reader.readline()
         return line if line else ""
 
-    async def write_line(self, line: str) -> None:
+    async def write_line(self, line: Any) -> None:
         """写入一行数据
         
         Args:
-            line: 要写入的行数据
+            line: 要写入的行数据，可以是字符串或 Pydantic 模型
         
         Raises:
             Exception: 当写入失败时
@@ -201,16 +201,25 @@ class StdioStream:
         例子：
             ```python
             # 写入字符串
-            await stream.write_line("Hello\\n")
+            await stream.write_line("Hello\n")
             
             # 写入 JSON
-            await stream.write_line(json.dumps({"result": "ok"}) + "\\n")
+            await stream.write_line(json.dumps({"result": "ok"}) + "\n")
+            
+            # 写入 Pydantic 模型
+            await stream.write_line(JSONRPCResponse(result="ok"))
             ```
         """
         try:
-            logger.debug(f"StdioStream 准备响应: {line}")
-            await self.writer.write(line.encode("utf-8") + b"\\n")
-            logger.debug(f"StdioStream 发送响应: {line}")
+            # 处理 Pydantic 模型
+            if hasattr(line, "model_dump_json"):
+                line_str = line.model_dump_json()
+            else:
+                line_str = str(line)
+            
+            logger.debug(f"StdioStream 准备响应: {line_str}")
+            await self.writer.write(line_str.encode("utf-8") + b"\n")
+            logger.debug(f"StdioStream 发送响应: {line_str}")
         except Exception as e:
             logger.exception(f"StdioStream 发送响应错误: {e}")
             raise e

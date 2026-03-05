@@ -231,7 +231,7 @@ class RPCRouter:
             label: 路由标签，默认 ""
         """
         self.prefix = prefix
-        self.label = ""
+        self.label = label
         self.methods = MethodsDict()
         self.middlewares = MiddlewaresList()
         self.sub_routers: Dict[str, RPCRouter] = {}
