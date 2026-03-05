@@ -8,6 +8,7 @@ from .router import RPCRouter
 from .appdoc import AppDoc
 from .stream import StdioStream
 from .middleware import MiddlewareManager
+from .dependencies import DependencyContainer
 
 __all__ = [
     "RPCServer",
@@ -16,4 +17,5 @@ __all__ = [
     "AppDoc",
     "StdioStream",
     "MiddlewareManager",
+    "DependencyContainer",
 ]

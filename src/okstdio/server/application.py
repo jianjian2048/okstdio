@@ -6,13 +6,14 @@
 
 import inspect
 import json
-from typing import Callable, Any
+from typing import Callable, Any, Type
 import asyncio
 from pydantic import BaseModel, ValidationError
 from .stream import StdioStream
 from .router import RPCRouter
 from .middleware import MiddlewareManager
 from .appdoc import AppDoc
+from .dependencies import DependencyContainer
 from ..general.jsonrpc_model import *
 from ..general.errors import *
 
@@ -76,7 +77,7 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
         - 路由注册和分发
         - 中间件支持
         - 参数自动校验（Pydantic 模型）
-        - 依赖注入（如 IOWrite）
+        - 依赖注入系统（内置 IOWrite，支持自定义依赖）
         - 自动生成 API 文档
     
     继承的基类：
@@ -106,6 +107,39 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
             app.runserver()
         ```
     
+    依赖注入示例：
+        ```python
+        from okstdio.server import RPCServer
+        import uiautomator2 as u2
+        
+        app = RPCServer("app")
+        
+        # 方式一：服务器创建时注册（已知配置）
+        app.register_dependency(
+            u2.Device, 
+            lambda: u2.connect("192.168.1.100:5555"),
+            singleton=True
+        )
+        
+        # 方式二：延迟注册（运行时动态注册）
+        @app.add_method()
+        def init_device(device_ip: str, device_port: int) -> dict:
+            device = u2.connect(f"{device_ip}:{device_port}")
+            app.register_dependency(u2.Device, lambda: device, singleton=True)
+            return {"status": "device registered"}
+        
+        # 方式三：在方法中使用依赖
+        @app.add_method()
+        def click_device(device: u2.Device) -> dict:
+            device.click(0.5, 0.5)
+            return {"status": "clicked"}
+        
+        # IOWrite 自动注册，无需手动注册
+        @app.add_method()
+        async def long_task(io_write: IOWrite):
+            await io_write.write({"result": "progress"})
+        ```
+    
     Args:
         server_name: 服务器名称，默认 "app"
         label: 服务器标签/描述，默认 ""
@@ -127,6 +161,93 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
 
         StdioStream.__init__(self)
         RPCRouter.__init__(self, server_name, label)
+        
+        # 初始化依赖注入容器
+        self._dependency_container = DependencyContainer()
+        
+        # 自动注册内置依赖 IOWrite
+        self._dependency_container.register(IOWrite, lambda: IOWrite(self), singleton=True)
+
+    def register_dependency(self, key: Type | str, factory: Callable, singleton: bool = True) -> None:
+        """注册依赖
+        
+        允许开发者自定义需要注入的依赖项。
+        
+        Args:
+            key: 依赖的标识符，可以是类型或字符串
+            factory: 依赖工厂函数
+            singleton: 是否单例，默认 True。单例依赖只会在第一次请求时创建
+        
+        例子：
+            ```python
+            import uiautomator2 as u2
+            
+            app = RPCServer("app")
+            
+            # 方式一：服务器创建时注册（已知配置）
+            app.register_dependency(
+                u2.Device, 
+                lambda: u2.connect("192.168.1.100:5555"),
+                singleton=True
+            )
+            
+            # 方式二：延迟注册（运行时动态注册）
+            @app.add_method()
+            def init_device(device_ip: str, device_port: int) -> dict:
+                device = u2.connect(f"{device_ip}:{device_port}")
+                app.register_dependency(u2.Device, lambda: device, singleton=True)
+                return {"status": "device registered"}
+            
+            # 方式三：使用字符串键（工厂函数）
+            app.register_dependency(
+                "db_factory",
+                lambda db_url: Database(db_url),
+                singleton=False
+            )
+            ```
+        """
+        self._dependency_container.register(key, factory, singleton)
+    
+    def get_dependency(self, key: Type | str) -> Any:
+        """获取依赖实例
+        
+        Args:
+            key: 依赖的标识符
+        
+        Returns:
+            依赖实例
+        
+        Raises:
+            KeyError: 当依赖未注册时
+        
+        例子：
+            ```python
+            # 获取类型键依赖
+            db = app.get_dependency(Database)
+            
+            # 获取字符串键依赖
+            factory = app.get_dependency("db_factory")
+            db = factory("sqlite:///db.sqlite")
+            ```
+        """
+        return self._dependency_container.get(key)
+    
+    def has_dependency(self, key: Type | str) -> bool:
+        """检查依赖是否已注册
+        
+        Args:
+            key: 依赖的标识符
+        
+        Returns:
+            是否已注册
+        
+        例子：
+            ```python
+            if app.has_dependency(Database):
+                db = app.get_dependency(Database)
+            ```
+        """
+        return self._dependency_container.has(key)
 
     async def handle_request(self, request_string: str) -> JSONRPCResponse:
         """处理 JSON-RPC 请求
@@ -213,7 +334,7 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
         
         支持的参数类型：
             - Pydantic 模型：自动从字典创建实例
-            - IOWrite：自动注入写入依赖
+            - 依赖注入：自动从依赖容器注入（如 IOWrite、自定义依赖）
             - 普通类型：直接从 params 中获取
             - 默认参数：使用函数默认值
         
@@ -235,9 +356,9 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
                 ):
                     # bound_args[name] = ann(**params)
                     bound_args[name] = ann(**params[name])
-                # 注入Stdio写依赖
-                elif ann is IOWrite:
-                    bound_args[name] = IOWrite(self)
+                # 依赖注入：从依赖容器解析
+                elif (dep := self._dependency_container.resolve_parameter(ann)) is not None:
+                    bound_args[name] = dep
                 # 普通参数
                 elif name in params:
                     bound_args[name] = params[name]
