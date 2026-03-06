@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "WebFetch(domain:textual.textual.io)",
+      "Bash(python:*)"
+    ]
+  }
+}

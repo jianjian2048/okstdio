@@ -1,0 +1,184 @@
+/* ----------------------------------------
+   全局样式
+   ---------------------------------------- */
+* {
+  scrollbar-color: $primary 10%;
+  scrollbar-color-hover: $primary 80%;
+  scrollbar-color-active: $primary;
+  scrollbar-background: $surface-darken-1;
+  scrollbar-background-hover: $surface-darken-1;
+  scrollbar-background-active: $surface-darken-1;
+  scrollbar-size-vertical: 1;
+
+  &:focus {
+    scrollbar-color: $primary 50%;
+  }
+}
+
+/* ----------------------------------------
+   主容器布局
+   ---------------------------------------- */
+AppMainContainer {
+  height: 1fr;
+  overflow: hidden;
+}
+
+/* ----------------------------------------
+   方法树容器
+   ---------------------------------------- */
+MethodTreeContainer {
+  background: $surface 80%;
+  width: 25;
+  min-width: 20;
+  max-width: 35;
+  dock: left;
+  border-right: solid $primary-darken-2;
+}
+
+MethodTreeWidget {
+  height: 1fr;
+  padding: 0 1;
+
+  &:focus {
+    background: $surface-lighten-1 20%;
+  }
+}
+
+/* ----------------------------------------
+   右侧容器
+   ---------------------------------------- */
+RightContainer {
+  height: 1fr;
+  width: 1fr;
+  padding: 0 1;
+}
+
+/* ----------------------------------------
+   参数编辑器
+   ---------------------------------------- */
+ParamsEditor {
+  height: auto;
+  min-height: 8;
+  max-height: 15;
+  margin-bottom: 1;
+  border: solid $primary-darken-2;
+  border-title-align: center;
+}
+
+MethodHeader {
+  padding: 0 1;
+  background: $primary-darken-3;
+  color: $text;
+  text-style: bold;
+}
+
+#params-input {
+  height: 1fr;
+  background: $surface-darken-1;
+  border: none;
+  padding: 0 1;
+}
+
+/* ----------------------------------------
+   响应查看器
+   ---------------------------------------- */
+ResponseViewer {
+  height: 1fr;
+  border: solid $primary-darken-2;
+}
+
+TabPane {
+  padding: 0;
+}
+
+/* JSON 查看器 */
+JsonResponseViewer {
+  height: 1fr;
+  padding: 0 1;
+}
+
+#json-content {
+  height: 1fr;
+  padding: 1;
+  background: $surface-darken-1;
+}
+
+/* 日志 */
+#request-log {
+  height: 1fr;
+  background: $surface-darken-1;
+  padding: 0 1;
+}
+
+/* ----------------------------------------
+   Header 和 Footer
+   ---------------------------------------- */
+Header {
+  background: $primary;
+  color: $text;
+}
+
+Footer {
+  background: $primary-darken-2;
+}
+
+/* ----------------------------------------
+   Tab 样式
+   ---------------------------------------- */
+TabbedContent TabBar {
+  height: 1;
+}
+
+TabbedContent Tab {
+  padding: 0 2;
+  min-width: 10;
+}
+
+TabbedContent Tab.-active {
+  text-style: bold;
+  background: $primary-darken-2;
+}
+
+/* ----------------------------------------
+   Tree 样式
+   ---------------------------------------- */
+Tree {
+  background: transparent;
+}
+
+Tree > TreeItem {
+  padding: 0 1;
+}
+
+Tree:focus > TreeItem:hover {
+  background: $primary 20%;
+}
+
+Tree:focus > TreeItem.-selected {
+  background: $primary 30%;
+}
+
+Tree .tree--label {
+  padding: 0 0 0 1;
+}
+
+Tree .tree--guides {
+  color: $primary-darken-1;
+}
+
+/* ----------------------------------------
+   通知样式
+   ---------------------------------------- */
+Notification {
+  background: $primary;
+  color: $text;
+  padding: 0 2;
+}
+
+Notification.-warning {
+  background: $warning;
+}
+
+Notification.-error {
+  background: $error;
+}

@@ -6,10 +6,7 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "jianjian", email = "jianjian2048@gmail.com" }]
 requires-python = ">=3.10"
-dependencies = [
-    "pydantic>=2.12.4",
-    "textual[syntax]>=8.0.2",
-]
+dependencies = ["pydantic>=2.12.4", "textual[syntax]>=8.0.2"]
 keywords = ["jsonrpc", "stdio", "rpc", "ipc", "subprocess", "asyncio"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -22,6 +19,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Networking",
 ]
+
+[project.scripts]
+rcptui = "okstdio.tui:run_app"
+
 
 [build-system]
 requires = ["uv_build>=0.8.0,<0.9"]
