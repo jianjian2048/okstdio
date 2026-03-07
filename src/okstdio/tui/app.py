@@ -12,8 +12,10 @@ from textual.binding import Binding
 from textual.containers import Vertical, Horizontal
 from textual.widgets import Header, Footer, Static
 from textual.reactive import reactive
+from textual import work
 
 from ..client import RPCClient
+from ..general.errors import RPCError
 from .widgets import MethodTreeWidget, ParamsEditor, ResponseViewer
 
 
@@ -51,6 +53,7 @@ class OkstdioApp(App):
     BINDINGS = [
         Binding("ctrl+j", "send_request", "发送请求", show=True),
         Binding("ctrl+r", "restart_server", "重启服务", show=True),
+        Binding("ctrl+l", "clear_log", "清理日志", show=True),
         Binding("ctrl+q", "quit", "退出", show=True),
     ]
 
@@ -85,14 +88,15 @@ class OkstdioApp(App):
     async def on_mount(self) -> None:
         """挂载后自动连接服务器"""
         if self.server_path:
-            await self._connect_server()
+            self._connect_server()
 
     async def on_unmount(self) -> None:
         """卸载时清理资源"""
         await self._disconnect_server()
 
+    @work(exclusive=True, name="connect_server")
     async def _connect_server(self) -> None:
-        """连接服务器"""
+        """连接服务器（在 worker 中运行，不阻塞 UI）"""
         if self._connecting:
             return
 
@@ -101,19 +105,12 @@ class OkstdioApp(App):
         viewer.log_message(f"正在连接服务器: {self.server_path}", "yellow")
 
         try:
-            # 停止现有连接
             await self._disconnect_server()
 
-            # 创建新客户端
             self._client = RPCClient("rcptui")
-
-            # 启动服务器进程
             await self._client.start(self.server_path)
-
-            # 获取方法树
             self._method_tree = await self._client.get_server_methods()
 
-            # 更新方法树 UI
             tree = self.query_one("#method-tree", MethodTreeWidget)
             tree.update_tree(self._method_tree)
 
@@ -169,38 +166,43 @@ class OkstdioApp(App):
             return
 
         editor = self.query_one("#params-editor", ParamsEditor)
-        viewer = self.query_one("#response-viewer", ResponseViewer)
 
-        # 获取参数
         try:
             params = editor.get_params()
         except json.JSONDecodeError as e:
             self.notify(f"JSON 格式错误: {e}", severity="error")
             return
 
-        method_path = self.selected_method.get("path", "")
+        self._do_send_request(self.selected_method.get("path", ""), params)
+
+    @work(exclusive=True, name="send_request")
+    async def _do_send_request(self, method_path: str, params: dict) -> None:
+        """执行请求发送（在 worker 中运行，不阻塞 UI）"""
+        viewer = self.query_one("#response-viewer", ResponseViewer)
+        viewer.log_message(f"发送请求: {method_path}")
 
         try:
-            # 发送请求
-            viewer.log_message(f"发送请求: {method_path}")
-            future = await self._client.send(method_path, params)
-            response = await future
-
-            # 显示响应
+            response = await self._client.call(method_path, params).then(
+                lambda response: response
+            )
             viewer.show_response(response)
+            viewer.log_request(method_path, params, response)
+            self.notify("请求成功")
 
-            # 记录日志
-            is_error = hasattr(response, "error") and response.error
-            viewer.log_request(method_path, params, response, error=is_error)
-
-            if is_error:
-                self.notify("请求返回错误", severity="warning")
-            else:
-                self.notify("请求成功")
+        except RPCError as e:
+            viewer.show_error(e)
+            viewer.log_error(method_path, params, e)
+            self.notify(f"[{e.code}] {e.message}", severity="warning")
 
         except Exception as e:
             viewer.log_message(f"请求失败: {str(e)}", "red")
             self.notify(f"请求失败: {e}", severity="error")
+
+    def action_clear_log(self) -> None:
+        """清理日志"""
+        viewer = self.query_one("#response-viewer", ResponseViewer)
+        viewer.clear_log()
+        self.notify("日志已清理")
 
     async def action_restart_server(self) -> None:
         """重启服务器动作"""
@@ -209,4 +211,4 @@ class OkstdioApp(App):
             return
 
         self.notify("正在重启服务器...")
-        await self._connect_server()
+        self._connect_server()

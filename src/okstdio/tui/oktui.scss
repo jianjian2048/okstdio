@@ -3,15 +3,13 @@
    ---------------------------------------- */
 * {
   scrollbar-color: $primary 10%;
-  scrollbar-color-hover: $primary 80%;
+  scrollbar-color-hover: $primary 50%;
   scrollbar-color-active: $primary;
-  scrollbar-background: $surface-darken-1;
-  scrollbar-background-hover: $surface-darken-1;
-  scrollbar-background-active: $surface-darken-1;
+  scrollbar-background: $surface;
   scrollbar-size-vertical: 1;
 
   &:focus {
-    scrollbar-color: $primary 50%;
+    scrollbar-color: $primary 30%;
   }
 }
 
@@ -20,27 +18,26 @@
    ---------------------------------------- */
 AppMainContainer {
   height: 1fr;
-  overflow: hidden;
 }
 
 /* ----------------------------------------
-   方法树容器
+   方法树容器（左侧边栏）
    ---------------------------------------- */
 MethodTreeContainer {
-  background: $surface 80%;
-  width: 25;
-  min-width: 20;
-  max-width: 35;
+  background: $surface;
+  min-width: 25;
+  max-width: 45;
   dock: left;
-  border-right: solid $primary-darken-2;
+  border-right: tall $surface-lighten-2;
 }
 
 MethodTreeWidget {
   height: 1fr;
   padding: 0 1;
+  background: transparent;
 
   &:focus {
-    background: $surface-lighten-1 20%;
+    background: $surface-lighten-1 10%;
   }
 }
 
@@ -59,24 +56,23 @@ RightContainer {
 ParamsEditor {
   height: auto;
   min-height: 8;
-  max-height: 15;
+  max-height: 16;
   margin-bottom: 1;
-  border: solid $primary-darken-2;
-  border-title-align: center;
+  border: round $surface-lighten-2;
 }
 
 MethodHeader {
-  padding: 0 1;
-  background: $primary-darken-3;
+  padding: 0 2;
+  background: $primary-darken-2;
   color: $text;
   text-style: bold;
+  height: 1;
 }
 
 #params-input {
   height: 1fr;
-  background: $surface-darken-1;
+  background: $surface;
   border: none;
-  padding: 0 1;
 }
 
 /* ----------------------------------------
@@ -84,59 +80,52 @@ MethodHeader {
    ---------------------------------------- */
 ResponseViewer {
   height: 1fr;
-  border: solid $primary-darken-2;
+  border: round $surface-lighten-2;
 }
 
-TabPane {
+/* Response TextArea */
+#response-text {
+  height: 1fr;
+  background: $surface;
+  border: none;
   padding: 0;
 }
 
-/* JSON 查看器 */
-JsonResponseViewer {
-  height: 1fr;
-  padding: 0 1;
-}
-
-#json-content {
-  height: 1fr;
-  padding: 1;
-  background: $surface-darken-1;
-}
-
-/* 日志 */
+/* Log RichLog */
 #request-log {
   height: 1fr;
-  background: $surface-darken-1;
+  background: $surface;
   padding: 0 1;
-}
-
-/* ----------------------------------------
-   Header 和 Footer
-   ---------------------------------------- */
-Header {
-  background: $primary;
-  color: $text;
-}
-
-Footer {
-  background: $primary-darken-2;
 }
 
 /* ----------------------------------------
    Tab 样式
    ---------------------------------------- */
+TabPane {
+  padding: 0;
+}
+
 TabbedContent TabBar {
   height: 1;
+  background: $surface-darken-1;
 }
 
 TabbedContent Tab {
-  padding: 0 2;
-  min-width: 10;
+  padding: 0 3;
+  min-width: 12;
+  background: $surface-darken-1;
+  color: $text-muted;
+}
+
+TabbedContent Tab:hover {
+  background: $surface;
+  color: $text;
 }
 
 TabbedContent Tab.-active {
   text-style: bold;
   background: $primary-darken-2;
+  color: $text;
 }
 
 /* ----------------------------------------
@@ -151,11 +140,11 @@ Tree > TreeItem {
 }
 
 Tree:focus > TreeItem:hover {
-  background: $primary 20%;
+  background: $primary 12%;
 }
 
 Tree:focus > TreeItem.-selected {
-  background: $primary 30%;
+  background: $primary 22%;
 }
 
 Tree .tree--label {
@@ -163,7 +152,19 @@ Tree .tree--label {
 }
 
 Tree .tree--guides {
-  color: $primary-darken-1;
+  color: $surface-lighten-2;
+}
+
+/* ----------------------------------------
+   Header / Footer
+   ---------------------------------------- */
+Header {
+  background: $primary-darken-1;
+  color: $text;
+}
+
+Footer {
+  background: $surface-darken-1;
 }
 
 /* ----------------------------------------

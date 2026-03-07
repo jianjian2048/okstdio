@@ -1,4 +1,6 @@
 import asyncio
+import sys
+from pathlib import Path
 from okstdio.server.application import RPCServer, RPCRouter, IOWrite
 from okstdio.general.jsonrpc_model import JSONRPCResponse
 from pydantic import Field
@@ -6,44 +8,73 @@ from typing import Annotated
 import logging
 from logging.handlers import RotatingFileHandler
 
-LOG_HANDLER = RotatingFileHandler(
-    filename=".logs/app.log", maxBytes=2 * 1024 * 1024, encoding="utf-8"
-)
+# 添加环境父文件夹到 path
+parent_path = Path(__file__).resolve().parent
+if str(parent_path) not in sys.path:
+    sys.path.insert(0, str(parent_path))
 
+from test_schema import TestTask, TestTaskMessage
+
+# ==================== 日志配置 ====================
+# 重要：日志只能写入文件，不能输出到 stdout
+# 否则会干扰 JSON-RPC 通信
+FORMAT = "[%(asctime)s] %(levelname)s @%(name)s > %(message)s"
+DATEFMT = "%m-%d %H:%M:%S"
+LOG_HANDLER = RotatingFileHandler(
+    filename=".logs/app.log",
+    maxBytes=2 * 1024 * 1024,  # 2MB
+    backupCount=1,  # 保留 1 个备份
+    encoding="utf-8",
+)
+LOG_HANDLER.setFormatter(logging.Formatter(FORMAT, DATEFMT))
+
+# 配置 root logger，确保不输出到 stdout
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.DEBUG)
-root_logger.handlers.clear()
+root_logger.setLevel(logging.INFO)
+root_logger.handlers.clear()  # 清除所有默认 handler(包括 StreamHandler）
 root_logger.addHandler(LOG_HANDLER)
 
+SERVER_NAME = "test_server"
 
-app = RPCServer("test_server", label="测试服务器", version="v1.0.0")
+logger = logging.getLogger(SERVER_NAME)
+
+app = RPCServer(SERVER_NAME, label="测试服务器", version="v1.0.0")
 
 
-@app.add_method(name="hello")
-def hello(name: Annotated[str, Field(description="姓名")]) -> str:
+@app.add_method(name="healthy", label="健康检查")
+def healthy() -> dict:
     """问候方法"""
-    root_logger.info(f"收到方法调用：{name}")
-    return f"Hello, {name}!"
+    return {"status": "healthy"}
 
 
-@app.add_method(name="long_task")
-async def long_task(io_write: IOWrite) -> dict:
-    for i in range(100):
-        await asyncio.sleep(0.1)
-        await io_write.write(JSONRPCResponse(id="progress", result={"progress": i + 1}))
-    return {"status": "completed"}
+async def background_task(
+    task_id: Annotated[str, Field(description="任务的ID")],
+    io_write: IOWrite,
+) -> None:
+
+    for i in range(10):
+        task_message = TestTaskMessage(message=f"任务进度 {(i+1)*10} %")
+        if i == 9:
+            task_message.task_completed = True
+        response = JSONRPCResponse(
+            id=task_id,
+            result=task_message,
+        )
+        await io_write.write(response)
+        await asyncio.sleep(1)
 
 
-sub_router = RPCRouter(prefix="sub", label="子路由")
+@app.add_method(name="test_background", label="测试后台任务")
+async def test_background(io_write: IOWrite) -> TestTask:
+    """测试后台任务"""
 
+    task_info = TestTask()
 
-@sub_router.add_method(name="user", label="用户详情")
-def user_detail(user_id: Annotated[int, Field(description="用户ID")]) -> str:
-    """用户详情"""
-    return f"用户详情 {user_id} 用户详情"
+    # 创建 后台任务
+    asyncio.create_task(background_task(task_info.task_id, io_write))
 
+    return task_info
 
-app.include_router(sub_router)
 
 if __name__ == "__main__":
     # print("开始启动测试服务器")

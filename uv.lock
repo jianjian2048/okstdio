@@ -67,14 +67,19 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+tui = [
     { name = "textual", extra = ["syntax"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.12.4" },
-    { name = "textual", extras = ["syntax"], specifier = ">=8.0.2" },
+    { name = "textual", extras = ["syntax"], marker = "extra == 'tui'", specifier = ">=8.0.2" },
 ]
+provides-extras = ["tui"]
 
 [[package]]
 name = "platformdirs"

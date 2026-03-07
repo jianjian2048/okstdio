@@ -253,7 +253,7 @@ class RPCServerError(RPCError):
 
     def __init__(self, code: int, message: str, data: Any = None, from_id: Any = 0):
         """初始化服务器自定义错误
-        
+
         Args:
             code: 错误码 范围 -32000 到 -32099
             message: 错误信息
@@ -263,3 +263,20 @@ class RPCServerError(RPCError):
         self.code = -32000 if code < -32000 else -32099 if code > -32099 else code
         self.message = message or "SERVER_ERROR - [服务端错误]"
         super().__init__(self.code, self.message, data, from_id)
+
+
+def _make_rpc_exception(code: int, message: str, data=None, from_id=0) -> RPCError:
+    """将 JSON-RPC 错误码映射为对应的 RPCError 子类"""
+    ERROR_MAP = {
+        -32700: RPCParseError,
+        -32600: RPCInvalidRequestError,
+        -32601: RPCMethodNotFoundError,
+        -32602: RPCInvalidParamsError,
+        -32603: RPCInternalError,
+    }
+    cls = ERROR_MAP.get(code)
+    if cls:
+        return cls(data=data, from_id=from_id)
+    if -32099 <= code <= -32000:
+        return RPCServerError(code=code, message=message, data=data, from_id=from_id)
+    return RPCError(code=code, message=message, data=data, from_id=from_id)

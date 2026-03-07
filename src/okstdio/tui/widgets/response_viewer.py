@@ -1,150 +1,93 @@
 """响应查看器组件
 
-显示 JSON-RPC 响应和日志的 TabbedContent 组件。
+显示 JSON-RPC 响应和日志。
+Response 面板使用 TextArea（可复制），Log 面板使用 RichLog（富文本格式）。
 """
 
 import json
 from datetime import datetime
 from typing import Any
-from textual.widgets import TabbedContent, TabPane, Static, RichLog
-from textual.containers import Vertical, VerticalScroll
-from textual.message import Message
+from textual.widgets import TabbedContent, TabPane, TextArea, RichLog
+from textual.containers import Vertical
 
 
 def format_json(data: Any, indent: int = 2) -> str:
-    """格式化 JSON 数据
-
-    Args:
-        data: 要格式化的数据
-        indent: 缩进空格数
-
-    Returns:
-        str: 格式化后的 JSON 字符串
-    """
+    """格式化 JSON 数据"""
     try:
         return json.dumps(data, indent=indent, ensure_ascii=False)
     except (TypeError, ValueError):
         return str(data)
 
 
-class JsonResponseViewer(VerticalScroll):
-    """JSON 响应查看器
-
-    以格式化的方式显示 JSON 响应。
-    """
-
-    def __init__(self, **kwargs) -> None:
-        """初始化 JSON 查看器"""
-        super().__init__(**kwargs)
-        self._current_response: Any = None
-
-    def compose(self):
-        """创建子组件"""
-        yield Static(id="json-content", expand=True)
-
-    def show_response(self, response: Any) -> None:
-        """显示响应
-
-        Args:
-            response: 响应数据
-        """
-        self._current_response = response
-
-        # 格式化 JSON
-        formatted = format_json(response)
-
-        # 更新显示
-        content = self.query_one("#json-content", Static)
-        content.update(formatted)
-
-    def clear(self) -> None:
-        """清空显示"""
-        self._current_response = None
-        content = self.query_one("#json-content", Static)
-        content.update("[dim]等待响应...[/dim]")
+def format_json_inline(data: Any) -> str:
+    """单行格式化 JSON 数据"""
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(data)
 
 
 class ResponseViewer(Vertical):
     """响应查看器
 
-    包含 Response 和 Log 两个标签页。
-
-    例子:
-        ```python
-        viewer = ResponseViewer()
-        viewer.show_response(response)
-        viewer.log_request("hello", {"name": "test"}, response)
-        ```
+    包含 Response（TextArea）和 Log（RichLog）两个标签页。
+    日志按行输出请求、结果和监听队列推送消息。
     """
 
     def __init__(self, **kwargs) -> None:
-        """初始化响应查看器"""
         super().__init__(**kwargs)
 
     def compose(self):
-        """创建子组件"""
         with TabbedContent(id="tabbed-content"):
             with TabPane("Response", id="tab-response"):
-                yield JsonResponseViewer(id="json-viewer")
+                yield TextArea(
+                    "",
+                    id="response-text",
+                    language="json",
+                    read_only=True,
+                    soft_wrap=True,
+                )
             with TabPane("Log", id="tab-log"):
-                yield RichLog(id="request-log", wrap=True, highlight=True)
+                yield RichLog(id="request-log", highlight=True, markup=True)
 
     def on_mount(self) -> None:
-        """挂载后初始化"""
-        # 初始化显示
-        json_viewer = self.query_one("#json-viewer", JsonResponseViewer)
-        json_viewer.clear()
-
-        # 初始化日志
-        log = self.query_one("#request-log", RichLog)
-        log.write("[dim]请求日志将显示在这里...[/dim]")
+        response_text = self.query_one("#response-text", TextArea)
+        response_text.placeholder = "响应窗口"
 
     def show_response(self, response: Any) -> None:
-        """显示响应
-
-        Args:
-            response: 响应数据（JSONRPCResponse 或 dict）
-        """
-        # 显示响应
-        json_viewer = self.query_one("#json-viewer", JsonResponseViewer)
-
+        """显示响应到 Response 面板"""
+        text_area = self.query_one("#response-text", TextArea)
         if hasattr(response, "model_dump"):
-            # Pydantic 模型
-            json_viewer.show_response(response.model_dump())
+            text_area.text = format_json(response.model_dump())
         elif isinstance(response, dict):
-            json_viewer.show_response(response)
+            text_area.text = format_json(response)
         else:
-            json_viewer.show_response(str(response))
+            text_area.text = str(response)
+
+    def show_error(self, error: Any) -> None:
+        """显示 RPC 错误到 Response 面板"""
+        text_area = self.query_one("#response-text", TextArea)
+        error_data: dict[str, Any] = {
+            "code": error.code,
+            "message": error.message,
+        }
+        if error.data:
+            error_data["data"] = error.data
+        text_area.text = format_json({"error": error_data})
+
+    # ---- Log 面板：按行输出请求、结果、推送 ----
 
     def log_request(
-        self,
-        method: str,
-        params: dict[str, Any],
-        response: Any,
-        error: bool = False
+        self, method: str, params: dict[str, Any], response: Any
     ) -> None:
-        """记录请求日志
-
-        Args:
-            method: 方法名
-            params: 请求参数
-            response: 响应数据
-            error: 是否为错误响应
-        """
+        """记录完整的请求-响应日志（按行输出）"""
         log = self.query_one("#request-log", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        # 请求行
+        log.write(f"[bold cyan]REQ[/bold cyan]  {ts} [bold]{method}[/bold]  {format_json_inline(params)}")
 
-        # 请求日志
-        if error:
-            log.write(f"[red]✗ {timestamp}[/red] [bold]{method}[/bold]")
-        else:
-            log.write(f"[green]✓ {timestamp}[/green] [bold]{method}[/bold]")
-
-        # 参数
-        log.write(f"  [dim]Params:[/dim] {format_json(params)}")
-
-        # 响应
+        # 结果行
         if hasattr(response, "model_dump"):
             resp_data = response.model_dump()
         elif isinstance(response, dict):
@@ -152,27 +95,39 @@ class ResponseViewer(Vertical):
         else:
             resp_data = str(response)
 
-        if error:
-            log.write(f"  [dim]Error:[/dim] [red]{format_json(resp_data)}[/red]")
-        else:
-            log.write(f"  [dim]Result:[/dim] {format_json(resp_data.get('result', resp_data))}")
+        result = resp_data.get("result", resp_data) if isinstance(resp_data, dict) else resp_data
+        log.write(f"[bold green]RES[/bold green]  {ts} [bold]{method}[/bold]  {format_json_inline(result)}")
 
-        log.write("")  # 空行分隔
+    def log_error(
+        self, method: str, params: dict[str, Any], error: Any
+    ) -> None:
+        """记录错误请求日志（按行输出）"""
+        log = self.query_one("#request-log", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+        # 请求行
+        log.write(f"[bold cyan]REQ[/bold cyan]  {ts} [bold]{method}[/bold]  {format_json_inline(params)}")
+
+        # 错误行
+        error_info = f"\\[{error.code}] {error.message}"
+        if error.data:
+            error_info += f"  {format_json_inline(error.data)}"
+        log.write(f"[bold red]ERR[/bold red]  {ts} [bold]{method}[/bold]  {error_info}")
+
+    def log_push(self, listen_id: int | str, data: Any) -> None:
+        """记录监听队列推送消息"""
+        log = self.query_one("#request-log", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        log.write(f"[bold yellow]PUSH[/bold yellow] {ts} [dim]id={listen_id}[/dim]  {format_json_inline(data)}")
 
     def log_message(self, message: str, style: str = "") -> None:
-        """记录普通日志消息
-
-        Args:
-            message: 日志消息
-            style: 样式字符串
-        """
+        """记录普通日志消息"""
         log = self.query_one("#request-log", RichLog)
-        timestamp = datetime.now().strftime("%H:%M:%S")
-
+        ts = datetime.now().strftime("%H:%M:%S")
         if style:
-            log.write(f"[{timestamp}] [{style}]{message}[/{style}]")
+            log.write(f"[bold blue]INFO[/bold blue] {ts} [{style}]{message}[/{style}]")
         else:
-            log.write(f"[{timestamp}] {message}")
+            log.write(f"[bold blue]INFO[/bold blue] {ts} {message}")
 
     def clear_log(self) -> None:
         """清空日志"""
@@ -181,5 +136,5 @@ class ResponseViewer(Vertical):
 
     def clear_response(self) -> None:
         """清空响应"""
-        json_viewer = self.query_one("#json-viewer", JsonResponseViewer)
-        json_viewer.clear()
+        text_area = self.query_one("#response-text", TextArea)
+        text_area.text = ""

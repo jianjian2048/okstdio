@@ -5,7 +5,10 @@
       "Bash(uv sync:*)",
       "Bash(uv run:*)",
       "WebFetch(domain:textual.textual.io)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(grep from okstdio:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -5,6 +5,7 @@
 """
 
 from typing import Callable, Any, Optional, Dict
+from contextlib import asynccontextmanager
 import asyncio
 import sys
 import os
@@ -17,6 +18,36 @@ from pydantic import ValidationError
 
 from ..general.jsonrpc_model import *
 from ..general.errors import *
+from .future import RPCFuture
+
+
+class StreamListener:
+    """流式监听器，支持 async for 迭代和 async with 上下文管理"""
+
+    def __init__(self, queue: asyncio.Queue, timeout: Optional[float] = None):
+        self._queue = queue
+        self._timeout = timeout
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            if self._timeout is not None:
+                msg = await asyncio.wait_for(self._queue.get(), timeout=self._timeout)
+            else:
+                msg = await self._queue.get()
+            if msg is None:
+                raise StopAsyncIteration
+            return msg
+        except asyncio.TimeoutError:
+            raise StopAsyncIteration
+
+    async def get(self):
+        """手动获取一条消息"""
+        if self._timeout is not None:
+            return await asyncio.wait_for(self._queue.get(), timeout=self._timeout)
+        return await self._queue.get()
 
 
 class RPCClient:
@@ -49,11 +80,13 @@ class RPCClient:
         RuntimeError: 当子进程启动失败时
     """
 
-    def __init__(self, client_name: str = "rpc_client"):
+    def __init__(self, client_name: str = "rpc_client", app: Optional[str] = None, *extra_args):
         """初始化 RPC 客户端
 
         Args:
             client_name: 客户端名称，用于日志标识
+            app: 应用程序路径，传入后 async with 会自动启动
+            *extra_args: 应用程序启动参数
         """
         self._lock = asyncio.Lock()
         self._running = False
@@ -66,6 +99,8 @@ class RPCClient:
         ] = {}
 
         self.client_name = client_name
+        self._app = app
+        self._extra_args = extra_args
         self.process: Optional[asyncio.subprocess.Process] = None
         self.logger = logging.getLogger(self.client_name)
 
@@ -262,7 +297,7 @@ class RPCClient:
 
             return future
 
-    async def start(self, app: str, *extra_args) -> None:
+    async def start(self, app: Optional[str] = None, *extra_args) -> None:
         """启动子进程
 
         根据提供的应用路径自动判断启动方式：
@@ -292,6 +327,11 @@ class RPCClient:
             await client.start("example.server", "--port", "8080")
             ```
         """
+
+        app = app or self._app
+        if app is None:
+            raise RuntimeError("未指定应用程序路径，请在构造时或 start() 时传入 app 参数")
+        extra_args = extra_args or self._extra_args
 
         def _is_module_ref(app: str) -> bool:
             """判断是否python模块"""
@@ -399,9 +439,70 @@ class RPCClient:
         self._listen_queue = {}
 
     async def __aenter__(self):
-        """异步上下文管理器进入"""
+        """异步上下文管理器进入，如果构造时传入了 app 则自动启动"""
+        if self._app and not self._running:
+            await self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器退出"""
         await self.stop()
+
+    def call(self, method: str, params: Any = None, *, request_id: Optional[str] = None, timeout: Optional[float] = None) -> RPCFuture:
+        """发送请求并返回可链式调用的 RPCFuture
+
+        同步方法，使得 `await client.call("method").then(handler)` 可以自然书写。
+
+        Args:
+            method: 要调用的 RPC 方法名称
+            params: 方法参数，默认为空字典
+            request_id: 请求 ID，如果未提供则自动生成 UUID
+            timeout: 超时时间（秒）
+
+        Returns:
+            RPCFuture: 可链式调用的 Future 对象
+
+        Raises:
+            RuntimeError: 当客户端未启动时
+        """
+        if not self._running:
+            raise RuntimeError("子进程未启动")
+        if request_id is None:
+            request_id = uuid.uuid1().hex
+
+        future = asyncio.get_running_loop().create_future()
+        self._pending_future[request_id] = future
+
+        request = JSONRPCRequest(id=request_id, method=method, params=params or {})
+        asyncio.create_task(self._do_send(request))
+
+        return RPCFuture(future, timeout=timeout)
+
+    async def _do_send(self, request: JSONRPCRequest):
+        """内部发送方法，通过 stdin 写入请求"""
+        async with self._lock:
+            self.process.stdin.write(request.encode("utf-8") + b"\n")
+            await self.process.stdin.drain()
+
+    @asynccontextmanager
+    async def stream(self, listen_id: int | str, *, timeout: Optional[float] = None):
+        """流式推送上下文管理器
+
+        自动管理监听队列的生命周期。
+
+        Args:
+            listen_id: 监听队列 ID
+            timeout: 每条消息的超时时间（秒）
+
+        例子：
+            ```python
+            async with client.stream(task_id) as listener:
+                async for msg in listener:
+                    print(msg.result)
+            ```
+        """
+        queue = self.add_listen_queue(listen_id)
+        try:
+            yield StreamListener(queue, timeout)
+        finally:
+            self.del_listen_queue(listen_id)
