@@ -123,7 +123,7 @@ class ResponseViewer(Vertical):
     def log_message(self, message: str, style: str = "") -> None:
         """记录普通日志消息"""
         log = self.query_one("#request-log", RichLog)
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         if style:
             log.write(f"[bold blue]INFO[/bold blue] {ts} [{style}]{message}[/{style}]")
         else:

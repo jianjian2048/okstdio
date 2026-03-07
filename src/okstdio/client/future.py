@@ -37,7 +37,12 @@ class RPCFuture:
         self._then_create_task: bool = False
         self._error_handler: Optional[Callable] = None
 
-    def then(self, handler: Callable, extra_params: Optional[dict] = None, create_task: bool = False) -> "RPCFuture":
+    def then(
+        self,
+        handler: Callable,
+        extra_params: Optional[dict] = None,
+        create_task: bool = False,
+    ) -> "RPCFuture":
         """注册成功处理器，支持 BaseModel 类型注解自动注入"""
         self._then_handler = handler
         self._then_extra_params = extra_params or {}
@@ -82,6 +87,9 @@ class RPCFuture:
 
     async def _invoke_then(self, response: JSONRPCResponse) -> Any:
         """用 inspect.signature 解析 handler 参数，自动注入"""
+        if self._then_handler is None:
+            raise ValueError("then() Not Registered handler function")
+
         sig = inspect.signature(self._then_handler)
         kwargs = {}
 
@@ -89,7 +97,11 @@ class RPCFuture:
             annotation = param.annotation
 
             # 1. Pydantic BaseModel 子类 → response.result 验证为该类型
-            if annotation is not inspect.Parameter.empty and isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            if (
+                annotation is not inspect.Parameter.empty
+                and isinstance(annotation, type)
+                and issubclass(annotation, BaseModel)
+            ):
                 kwargs[name] = annotation.model_validate(response.result)
             # 2. extra_params 中的同名参数
             elif name in self._then_extra_params:
@@ -114,7 +126,9 @@ class RPCFuture:
 
     def __await__(self):
         if self._then_create_task and self._then_handler:
+
             async def _create():
                 return asyncio.create_task(self._resolve())
+
             return _create().__await__()
         return self._resolve().__await__()

@@ -2,7 +2,13 @@ import asyncio
 import sys
 from pathlib import Path
 from okstdio.server.application import RPCServer, RPCRouter, IOWrite
-from okstdio.general.jsonrpc_model import JSONRPCResponse
+from okstdio.general.jsonrpc_model import (
+    JSONRPCResponse,
+    JSONRPCError,
+    JSONRPCServerErrorDetail,
+)
+from okstdio.server.application import RPCInvalidRequestError
+
 from pydantic import Field
 from typing import Annotated
 import logging
@@ -47,6 +53,12 @@ def healthy() -> dict:
     return {"status": "healthy"}
 
 
+@app.add_method(name="hello", label="问候方法")
+def hello(name: str = "World") -> str:
+    """问候方法"""
+    return f"hello {name} !"
+
+
 async def background_task(
     task_id: Annotated[str, Field(description="任务的ID")],
     io_write: IOWrite,
@@ -74,6 +86,17 @@ async def test_background(io_write: IOWrite) -> TestTask:
     asyncio.create_task(background_task(task_info.task_id, io_write))
 
     return task_info
+
+
+@app.add_method(name="test_error", label="测试错误")
+def test_error() -> JSONRPCServerErrorDetail:
+    """测试错误"""
+
+    return JSONRPCServerErrorDetail(
+        code=-32001,
+        message="测试错误",
+        data={"param": "value"},
+    )
 
 
 if __name__ == "__main__":

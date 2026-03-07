@@ -14,8 +14,8 @@ from textual.widgets import Header, Footer, Static
 from textual.reactive import reactive
 from textual import work
 
-from ..client import RPCClient
 from ..general.errors import RPCError
+from .client import TUIClient
 from .widgets import MethodTreeWidget, ParamsEditor, ResponseViewer
 
 
@@ -70,7 +70,7 @@ class OkstdioApp(App):
         """
         super().__init__(**kwargs)
         self.server_path = server_path
-        self._client: Optional[RPCClient] = None
+        self._client: Optional[TUIClient] = None
         self._method_tree: dict[str, Any] = {}
         self._connecting = False
 
@@ -87,6 +87,7 @@ class OkstdioApp(App):
 
     async def on_mount(self) -> None:
         """挂载后自动连接服务器"""
+        self.theme = "rose-pine-moon"
         if self.server_path:
             self._connect_server()
 
@@ -107,7 +108,11 @@ class OkstdioApp(App):
         try:
             await self._disconnect_server()
 
-            self._client = RPCClient("rcptui")
+            self._client = TUIClient(
+                # on_send=self._on_client_send,
+                # on_recv=self._on_client_recv,
+                on_push=self._on_client_push,
+            )
             await self._client.start(self.server_path)
             self._method_tree = await self._client.get_server_methods()
 
@@ -117,7 +122,7 @@ class OkstdioApp(App):
             viewer.log_message(
                 f"服务器已连接: {self._method_tree.get('server_name', 'unknown')} "
                 f"[{self._method_tree.get('version', '')}]",
-                "green"
+                "green",
             )
 
         except Exception as e:
@@ -137,8 +142,7 @@ class OkstdioApp(App):
             self._client = None
 
     def on_method_tree_widget_method_selected(
-        self,
-        event: MethodTreeWidget.MethodSelected
+        self, event: MethodTreeWidget.MethodSelected
     ) -> None:
         """方法选中事件处理
 
@@ -152,7 +156,7 @@ class OkstdioApp(App):
         editor.set_method(
             method_name=event.method_info.get("path", ""),
             method_label=event.method_info.get("label", ""),
-            params=event.method_info.get("params", [])
+            params=event.method_info.get("params", []),
         )
 
     async def action_send_request(self) -> None:
@@ -203,6 +207,30 @@ class OkstdioApp(App):
         viewer = self.query_one("#response-viewer", ResponseViewer)
         viewer.clear_log()
         self.notify("日志已清理")
+
+    def _on_client_send(self, method: str, params: Any, request_id: str) -> None:
+        """客户端发送请求时的回调"""
+        viewer = self.query_one("#response-viewer", ResponseViewer)
+        viewer.log_message(f"→ {method}  id={request_id}")
+
+    def _on_client_recv(self, response_dict: dict) -> None:
+        """客户端接收响应时的回调"""
+        viewer = self.query_one("#response-viewer", ResponseViewer)
+        response_id = response_dict.get("id", "?")
+        if "error" in response_dict:
+            viewer.log_message(f"← ERR id={response_id}", "red")
+        else:
+            viewer.log_message(f"← RES id={response_id}")
+
+    def _on_client_push(self, response_id: Any, parsed: Any) -> None:
+        """未匹配的服务器推送回调"""
+        viewer = self.query_one("#response-viewer", ResponseViewer)
+        if hasattr(parsed, "result"):
+            viewer.log_push(response_id, parsed.result)
+        elif hasattr(parsed, "error"):
+            viewer.log_push(response_id, {"error": parsed.error})
+        else:
+            viewer.log_push(response_id, parsed)
 
     async def action_restart_server(self) -> None:
         """重启服务器动作"""
