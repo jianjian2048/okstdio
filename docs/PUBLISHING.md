@@ -1,267 +1,149 @@
 # 发布到 PyPI 指南
 
-本文档说明如何将 okstdio 发布到 PyPI。
+本项目使用 `uv` 作为包管理器，构建后端为 `uv_build`。
 
 ## 前置要求
 
-1. **注册 PyPI 账号**
+1. **安装 uv**（如果未安装）
+   ```bash
+   pip install uv
+   # 或 Windows
+   winget install astral-sh.uv
+   ```
+
+2. **注册 PyPI 账号**
    - 生产环境：https://pypi.org/account/register/
    - 测试环境：https://test.pypi.org/account/register/
 
-2. **安装构建工具**
-   ```bash
-   pip install build twine
+3. **生成 API Token**（推荐，比密码更安全）
+   - 生产：https://pypi.org/manage/account/token/
+   - 测试：https://test.pypi.org/manage/account/token/
+
+4. **配置 Token**（一次性配置，之后无需重复）
+
+   创建或编辑 `~/.pypirc`（Windows：`%USERPROFILE%\.pypirc`）：
+
+   ```ini
+   [pypi]
+   username = __token__
+   password = pypi-AgEIcH...你的正式token...
+
+   [testpypi]
+   username = __token__
+   password = pypi-AgEIcH...你的测试token...
    ```
-   
-   或使用 uv（推荐）：
-   ```bash
-   uv tool install build
-   uv tool install twine
-   ```
 
-## 发布步骤
+   > **注意**：不要将 `.pypirc` 提交到 git！
 
-### 方法一：使用 uv（推荐）
+---
 
-uv 提供了简化的发布流程：
+## 发布流程
 
-```bash
-# 1. 构建包
-uv build
+### 第一步：更新版本号
 
-# 2. 发布到 PyPI（会提示输入用户名和密码）
-uv publish
-
-# 或先发布到 Test PyPI 测试
-uv publish --publish-url https://test.pypi.org/legacy/
-```
-
-### 方法二：使用传统工具
-
-#### 1. 清理旧的构建文件
-
-```bash
-# Windows PowerShell
-Remove-Item -Recurse -Force dist, build, *.egg-info -ErrorAction SilentlyContinue
-
-# Linux/Mac
-rm -rf dist/ build/ *.egg-info
-```
-
-#### 2. 构建分发包
-
-```bash
-python -m build
-```
-
-这会在 `dist/` 目录生成两个文件：
-- `okstdio-0.1.0.tar.gz` (源码分发)
-- `okstdio-0.1.0-py3-none-any.whl` (wheel 分发)
-
-#### 3. 检查构建的包
-
-```bash
-twine check dist/*
-```
-
-确保没有错误或警告。
-
-#### 4. 测试发布（可选但推荐）
-
-先发布到 Test PyPI 测试：
-
-```bash
-twine upload --repository testpypi dist/*
-```
-
-测试安装：
-
-```bash
-pip install --index-url https://test.pypi.org/simple/ okstdio
-```
-
-#### 5. 正式发布到 PyPI
-
-```bash
-twine upload dist/*
-```
-
-会提示输入：
-- Username: 你的 PyPI 用户名
-- Password: 你的 PyPI 密码（或 API Token）
-
-## 使用 API Token（推荐）
-
-为了安全，建议使用 API Token 而不是密码：
-
-### 1. 生成 API Token
-
-访问 https://pypi.org/manage/account/token/ 创建 token
-
-### 2. 配置 .pypirc
-
-创建 `~/.pypirc` 文件（Windows: `%USERPROFILE%\.pypirc`）：
-
-```ini
-[pypi]
-username = __token__
-password = pypi-AgEIcH...你的token...
-
-[testpypi]
-username = __token__
-password = pypi-AgEIcH...你的token...
-```
-
-**注意**：不要将 `.pypirc` 提交到 git！
-
-### 3. 使用配置文件发布
-
-```bash
-twine upload dist/*
-```
-
-现在不需要手动输入用户名和密码了。
-
-## 版本管理
-
-### 更新版本号
-
-编辑 `pyproject.toml`：
+编辑 `pyproject.toml`，遵循语义化版本规范：
 
 ```toml
 [project]
-version = "0.1.1"  # 更新版本号
+version = "1.0.1"  # MAJOR.MINOR.PATCH
 ```
 
-版本号遵循语义化版本规范：
-- **MAJOR.MINOR.PATCH** (例如: 1.2.3)
-- MAJOR: 不兼容的 API 变更
-- MINOR: 向后兼容的功能新增
-- PATCH: 向后兼容的问题修复
+版本规则：
+- **PATCH**（如 1.0.0 → 1.0.1）：Bug 修复
+- **MINOR**（如 1.0.0 → 1.1.0）：向后兼容的新功能
+- **MAJOR**（如 1.0.0 → 2.0.0）：不兼容的 API 变更
 
-### 发布新版本
+### 第二步：运行测试
 
 ```bash
-# 1. 更新版本号（编辑 pyproject.toml）
-# 2. 更新 CHANGELOG（如果有）
-# 3. 清理旧构建
-rm -rf dist/
-# 4. 构建新版本
+pytest tests/
+```
+
+确保所有测试通过后再继续。
+
+### 第三步：构建包
+
+```bash
 uv build
-# 5. 发布
+```
+
+构建完成后，`dist/` 目录会生成：
+- `okstdio-1.0.1.tar.gz`（源码包）
+- `okstdio-1.0.1-py3-none-any.whl`（wheel 包）
+
+### 第四步（可选）：先发布到 Test PyPI 验证
+
+```bash
+uv publish --publish-url https://test.pypi.org/legacy/
+```
+
+验证安装：
+```bash
+pip install --index-url https://test.pypi.org/simple/ okstdio
+pip install --index-url https://test.pypi.org/simple/ "okstdio[tui]"
+```
+
+### 第五步：发布到正式 PyPI
+
+```bash
 uv publish
 ```
 
+发布后用户即可通过以下方式安装：
+
+```bash
+uv add okstdio
+uv add "okstdio[tui]"
+
+# 或 pip
+pip install okstdio
+pip install "okstdio[tui]"
+```
+
+---
+
+## 快速参考
+
+```bash
+# 完整发布流程
+pytest tests/                                              # 1. 跑测试
+# 编辑 pyproject.toml 更新版本号                           # 2. 改版本
+uv build                                                   # 3. 构建
+uv publish --publish-url https://test.pypi.org/legacy/    # 4. 测试发布（可选）
+uv publish                                                 # 5. 正式发布
+```
+
+---
+
 ## 发布检查清单
 
-在发布前确保：
-
 - [ ] 所有测试通过（`pytest tests/`）
-- [ ] 更新了版本号
-- [ ] 更新了 README.md 和文档
-- [ ] 更新了 CHANGELOG（如果有）
-- [ ] LICENSE 文件存在且正确
-- [ ] 清理了临时文件和缓存
-- [ ] `pyproject.toml` 配置正确
-- [ ] 构建包通过检查（`twine check`）
-- [ ] 在 Test PyPI 测试过（可选）
+- [ ] `pyproject.toml` 版本号已更新
+- [ ] README.md 文档已更新
+- [ ] 清理了临时文件（`dist/` 旧版本）
+- [ ] Test PyPI 测试过（可选）
+
+---
 
 ## 常见问题
 
-### Q: 上传失败：文件已存在
+**Q：上传失败"File already exists"**
 
-A: PyPI 不允许覆盖已发布的版本。你需要：
-1. 更新版本号
-2. 重新构建
-3. 重新上传
+PyPI 不允许覆盖已发布的版本。需要更新版本号重新构建发布。
 
-### Q: 如何撤回已发布的版本？
+**Q：uv publish 提示认证失败**
 
-A: PyPI 不允许删除已发布的版本，但可以"yank"它：
-```bash
-twine upload --repository pypi --skip-existing dist/*
-```
+检查 `~/.pypirc` 配置，确认 token 填写正确，用户名固定为 `__token__`。
 
-访问 PyPI 项目页面手动 yank 版本。
+**Q：如何撤回已发布的版本？**
 
-### Q: 构建失败怎么办？
+PyPI 不支持删除，但可以在项目页面 "yank"（标记为不推荐），用户安装时会收到警告。
 
-A: 检查：
-1. `pyproject.toml` 配置是否正确
-2. 所有必需文件是否存在
-3. Python 版本是否符合要求
-4. 依赖包是否都已安装
-
-### Q: 如何查看包的详细信息？
-
-A: 解压 wheel 文件查看：
-```bash
-unzip -l dist/okstdio-0.1.0-py3-none-any.whl
-```
-
-## 自动化发布（GitHub Actions）
-
-创建 `.github/workflows/publish.yml`：
-
-```yaml
-name: Publish to PyPI
-
-on:
-  release:
-    types: [published]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    
-    - name: Build package
-      run: python -m build
-    
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
-```
-
-需要在 GitHub 仓库设置中添加 `PYPI_API_TOKEN` secret。
-
-## 快速命令参考
-
-```bash
-# 使用 uv（推荐）
-uv build                                              # 构建包
-uv publish                                            # 发布到 PyPI
-uv publish --publish-url https://test.pypi.org/legacy/  # 发布到 Test PyPI
-
-# 使用传统工具
-python -m build                                       # 构建包
-twine check dist/*                                    # 检查包
-twine upload --repository testpypi dist/*            # 测试发布
-twine upload dist/*                                   # 正式发布
-```
+---
 
 ## 相关链接
 
 - [PyPI 官网](https://pypi.org/)
 - [Test PyPI](https://test.pypi.org/)
-- [Python 打包指南](https://packaging.python.org/)
-- [语义化版本](https://semver.org/lang/zh-CN/)
-- [Twine 文档](https://twine.readthedocs.io/)
-
----
-
-祝发布顺利！🎉
-
+- [uv 文档](https://docs.astral.sh/uv/)
+- [语义化版本规范](https://semver.org/lang/zh-CN/)
