@@ -12,19 +12,19 @@
     ```python
     # 服务器端
     from okstdio.server import RPCServer
-    
+
     app = RPCServer("my_server")
-    
+
     @app.add_method()
     def hello(name: str) -> str:
         return f"Hello, {name}!"
-    
+
     if __name__ == "__main__":
         app.runserver()
-    
+
     # 客户端
     from okstdio.client import RPCClient
-    
+
     async def main():
         async with RPCClient("my_client") as client:
             await client.start("python -m my_server")
@@ -33,3 +33,7 @@
             print(response.result)
     ```
 """
+
+from .client.manager import ClientManager, BroadcastResult
+
+__all__ = ["ClientManager", "BroadcastResult"]

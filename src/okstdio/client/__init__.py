@@ -5,5 +5,6 @@
 
 from .application import RPCClient, StreamListener
 from .future import RPCFuture
+from .manager import ClientManager, BroadcastResult
 
-__all__ = ["RPCClient", "RPCFuture", "StreamListener"]
+__all__ = ["RPCClient", "RPCFuture", "StreamListener", "ClientManager", "BroadcastResult"]
