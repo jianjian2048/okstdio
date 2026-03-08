@@ -1,6 +1,6 @@
 [project]
 name = "okstdio"
-version = "0.1.0"
+version = "1.0.0"
 description = "基于 Stdio 的 JSON RPC 父子进程通信模块"
 readme = "README.md"
 license = { text = "MIT" }

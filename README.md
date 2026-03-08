@@ -5,33 +5,39 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-OkStdio 是一个轻量级的 Python 框架，通过标准输入输出（stdin/stdout）实现父子进程之间的 JSON-RPC 2.0 通信。它提供了优雅的 API 设计、强类型支持、中间件机制以及自动文档生成功能。
+OkStdio 是一个轻量级的 Python 框架，通过标准输入输出（stdin/stdout）实现父子进程之间的 JSON-RPC 2.0 通信。提供优雅的 API 设计、强类型支持、链式调用、流式响应、中间件机制和自动文档生成。
 
 ## 特性
 
 - ✅ **JSON-RPC 2.0 标准**：完整实现 JSON-RPC 2.0 协议规范
-- ✅ **基于 Stdio**：通过标准输入输出进行通信，轻量且跨平台
+- ✅ **基于 Stdio**：通过标准输入输出通信，轻量且跨平台
 - ✅ **强类型支持**：基于 Pydantic 的参数验证和序列化
-- ✅ **异步优先**：完整的 asyncio 支持，适合 I/O 密集型任务
-- ✅ **中间件机制**：灵活的请求/响应拦截和处理
+- ✅ **异步优先**：完整的 asyncio 支持
+- ✅ **链式调用**：`call().then().error()` 的 Promise 风格链式 API
+- ✅ **流式响应**：`async for` 流式接收服务器推送（StreamListener）
+- ✅ **中间件机制**：灵活的请求/响应拦截处理
 - ✅ **路由系统**：支持方法前缀和嵌套路由
+- ✅ **依赖注入**：支持单例/非单例、运行时动态注册
+- ✅ **批量管理**：ClientManager 管理多客户端，支持广播请求
 - ✅ **自动文档**：自动生成 Markdown 格式的 API 文档
-- ✅ **流式响应**：支持服务器主动推送消息（IOWrite）
-- ✅ **依赖注入**：灵活的依赖注入系统，支持单例/非单例、运行时动态注册
-- ✅ **服务器方法树**：通过 `__system__` 系统方法获取完整的服务器方法树结构
-- ✅ **TUI 调试工具**：内置文本用户界面调试工具 (`rcptui`)，可视化方法和交互式测试
-- ✅ **跨平台**：Windows/Linux/macOS 全平台支持，自动处理编码问题
+- ✅ **服务器方法树**：通过 `__system__` 系统方法获取完整方法树
+- ✅ **TUI 调试工具**：内置文本用户界面调试工具 `rcptui`
+- ✅ **跨平台**：Windows/Linux/macOS 全平台支持，自动处理编码
 
 ## 安装
 
 ```bash
 pip install okstdio
+
+# 包含 TUI 调试工具
+pip install "okstdio[tui]"
 ```
 
 或使用 uv（推荐）：
 
 ```bash
 uv add okstdio
+uv add "okstdio[tui]"
 ```
 
 ## 快速开始
@@ -66,10 +72,16 @@ from okstdio.client import RPCClient
 async def main():
     async with RPCClient("my_client") as client:
         await client.start("my_server")  # 启动服务器进程
-        
+
+        # 方式一：send() + await（传统风格）
         future = await client.send("get_user", {"user_id": 1})
         response = await future
-        print(response.result)  # {"name": "张三", "age": 25}
+        print(response.result)
+
+        # 方式二：call().then()（链式风格）
+        await client.call("get_user", {"user_id": 1}).then(
+            lambda result: print(result)
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -79,12 +91,9 @@ if __name__ == "__main__":
 
 ### 1. 服务器 (RPCServer)
 
-服务器负责接收和处理 JSON-RPC 请求：
-
 ```python
 from okstdio.server import RPCServer, RPCRouter
 
-# 创建服务器实例
 app = RPCServer("example_server", label="示例服务器", version="v1.0.0")
 
 # 注册方法
@@ -104,32 +113,93 @@ app.include_router(user_router)
 
 ### 2. 客户端 (RPCClient)
 
-客户端用于与服务器进程通信：
-
 ```python
 from okstdio.client import RPCClient
 
 async with RPCClient("client_name") as client:
-    # 启动服务器（模块方式）
-    await client.start("example.server")
-    
-    # 或启动脚本
-    await client.start("path/to/server.py")
-    
-    # 发送请求
+    await client.start("example.server")    # 模块方式
+    # await client.start("path/to/server.py")  # 脚本方式
+
+    # 传统方式
     future = await client.send("user.create", {"username": "alice"})
     response = await future
-    
-    # 监听流式响应
-    queue = client.add_listen_queue(task_id)
-    while True:
-        message = await queue.get()
-        print(message)
+
+    # 链式调用
+    await client.call("user.create", {"username": "alice"}).then(
+        lambda result: print(result)
+    )
 ```
 
-### 3. 中间件
+### 3. 链式调用 (RPCFuture)
 
-中间件可以拦截和处理请求/响应：
+`call()` 返回 `RPCFuture`，支持 `.then()` 和 `.error()` 链式处理：
+
+```python
+from pydantic import BaseModel
+
+class UserResult(BaseModel):
+    id: int
+    username: str
+
+# 自动注入 Pydantic 模型
+await client.call("user.create", {"username": "alice"}).then(
+    lambda user: print(f"创建成功: {user.username}"),  # user 是 UserResult 实例
+    extra_params={"user": UserResult}  # 类型提示
+)
+
+# 使用参数名约定
+await client.call("user.create", {"username": "alice"}).then(
+    lambda result: print(result)    # result → response.result
+).error(
+    lambda err: print(f"出错: {err}")
+)
+
+# 后台任务（不阻塞）
+client.call("long_task", {}).then(on_done, create_task=True)
+```
+
+`.then()` 参数注入规则：
+1. 参数类型为 `BaseModel` 子类 → 用 `response.result` 实例化该模型
+2. `extra_params` 中有同名 key → 注入对应值
+3. 参数名为 `result` → 注入 `response.result`
+4. 参数名为 `response` → 注入完整 `JSONRPCResponse`
+5. 其余 → 注入 `response.result`
+
+### 4. 流式响应 (IOWrite + StreamListener)
+
+**服务器端** 通过 `IOWrite` 推送：
+
+```python
+from okstdio.server import IOWrite
+
+@app.add_method(name="long_task")
+async def long_task(io_write: IOWrite) -> dict:
+    for i in range(10):
+        await io_write.write({"progress": i * 10, "status": "running"})
+        await asyncio.sleep(1)
+    return {"status": "completed"}
+```
+
+**客户端** 通过 `stream()` 上下文管理器接收：
+
+```python
+# 推荐：async for 迭代（自动结束）
+async with client.stream("progress") as listener:
+    future = await client.send("long_task", {})
+    async for message in listener:
+        print(f"进度: {message}")
+
+# 手动：监听队列
+queue = client.add_listen_queue("progress")
+future = await client.send("long_task", {})
+while True:
+    msg = await queue.get()
+    if msg is None:
+        break
+    print(msg)
+```
+
+### 5. 中间件
 
 ```python
 @app.add_middleware(label="日志中间件")
@@ -140,55 +210,16 @@ async def log_middleware(request, call_next):
     return response
 ```
 
-### 4. 流式响应 (IOWrite)
-
-服务器可以主动推送消息给客户端：
-
-```python
-from okstdio.server import IOWrite
-
-@app.add_method(name="stream_data")
-async def stream_data(io_write: IOWrite) -> dict:
-    for i in range(10):
-        await io_write.write(JSONRPCResponse(
-            id="stream-id",
-            result={"progress": i * 10}
-        ))
-        await asyncio.sleep(1)
-    return {"status": "completed"}
-```
-
-### 5. 类型注解
-
-支持使用 `Annotated` 为参数添加验证和文档：
-
-```python
-from typing import Annotated
-from pydantic import Field
-
-@app.add_method(name="create_user")
-def create_user(
-    username: Annotated[str, Field(..., min_length=3, description="用户名")],
-    age: Annotated[int, Field(..., ge=0, le=120, description="年龄")]
-) -> dict:
-    return {"username": username, "age": age}
-```
-
 ### 6. 依赖注入
 
-灵活的依赖注入系统，支持自定义依赖、单例/非单例管理、运行时动态注册：
-
 ```python
-from okstdio.server import RPCServer
 import uiautomator2 as u2
 
-app = RPCServer("app")
-
-# 方式一：服务器创建时注册（已知配置）
+# 注册单例依赖
 app.register_dependency(
-    u2.Device, 
+    u2.Device,
     lambda: u2.connect("192.168.1.100:5555"),
-    singleton=True  # 单例模式，全局只创建一个实例
+    singleton=True
 )
 
 @app.add_method()
@@ -196,115 +227,80 @@ def click_device(device: u2.Device) -> dict:
     device.click(0.5, 0.5)
     return {"status": "clicked"}
 
-# 方式二：延迟注册（运行时动态注册）
+# 运行时动态注册
 @app.add_method()
-def init_device(device_ip: str, device_port: int) -> dict:
-    device = u2.connect(f"{device_ip}:{device_port}")
+def init_device(device_ip: str) -> dict:
+    device = u2.connect(device_ip)
     app.register_dependency(u2.Device, lambda: device, singleton=True)
     return {"status": "device registered"}
 
-# 方式三：使用字符串键（工厂函数）
-app.register_dependency(
-    "db_factory",
-    lambda: lambda db_url: Database(db_url),
-    singleton=True
-)
-
-@app.add_method()
-def use_db() -> dict:
-    factory = app.get_dependency("db_factory")
-    db = factory("sqlite:///db.sqlite")
-    return {"status": "ok"}
-
-# IOWrite 自动注册，无需手动注册
-@app.add_method()
-async def long_task(io_write: IOWrite):
-    await io_write.write({"result": "progress"})
+# 检查依赖
+if app.has_dependency(u2.Device):
+    device = app.get_dependency(u2.Device)
 ```
 
-### 7. 服务器方法树
-
-通过 `__system__` 系统方法获取完整的服务器方法树结构：
-
-#### 服务器端
-
-服务器会自动注册 `__system__` 系统方法，无需手动注册：
+### 7. 批量客户端管理 (ClientManager)
 
 ```python
-from okstdio.server import RPCServer
+from okstdio import ClientManager
 
-app = RPCServer("my_server", label="我的服务器", version="v1.0.0")
+async with ClientManager() as manager:
+    # 添加多个客户端
+    await manager.add("server1", "module.server1")
+    await manager.add("server2", "module.server2")
 
-@app.add_method(name="hello", label="问候")
-def hello(name: str) -> str:
-    """问候方法"""
-    return f"Hello, {name}!"
+    # 并发启动所有
+    await manager.start_all()
 
-if __name__ == "__main__":
-    app.runserver()
+    # 单独调用
+    result = await manager.send_to("server1", "method", {"param": "value"})
+    await manager.call_to("server2", "method", {"param": "value"}).then(
+        lambda result: print(result)
+    )
+
+    # 广播请求（不抛异常，独立封装结果）
+    results = await manager.broadcast("health_check", {})
+    for r in results:
+        if r.error:
+            print(f"{r.client_name} 失败: {r.error}")
+        else:
+            print(f"{r.client_name} 结果: {r.result}")
 ```
 
-#### 客户端
-
-使用 `get_server_methods()` 方法获取服务器方法树：
+### 8. 服务器方法树
 
 ```python
-import asyncio
-from okstdio.client import RPCClient
+# 客户端获取服务器方法树
+method_tree = await client.get_server_methods()
+print("服务器名称:", method_tree["server_name"])
+print("服务器版本:", method_tree["version"])
 
-async def main():
-    async with RPCClient("my_client") as client:
-        await client.start("my_server")
-        
-        # 获取服务器方法树
-        method_tree = await client.get_server_methods()
-        print("服务器名称:", method_tree["server_name"])
-        print("服务器版本:", method_tree["version"])
-        print("服务器标签:", method_tree["label"])
-        
-        # 列出所有方法
-        print("\n方法列表:")
-        for method in method_tree["methods"]:
-            print(f"- {method['name']} ({method['path']}): {method['doc']}")
-        
-        # 查看路由
-        print("\n路由信息:")
-        for router_name, router_info in method_tree["routers"].items():
-            print(f"- {router_name}: {len(router_info['methods'])} 个方法")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+for method in method_tree["methods"]:
+    print(f"- {method['name']} ({method['path']}): {method['doc']}")
 ```
 
-方法树结构包含：
+方法树结构：
 - `server_name`: 服务器名称
 - `version`: 服务器版本
 - `label`: 服务器标签
-- `methods`: 方法列表（包含名称、路径、文档、参数、返回值）
+- `methods`: 方法列表（name, label, path, doc, params, results）
 - `middlewares`: 中间件列表
-- `routers`: 路由器字典（包含子路由和方法）
+- `routers`: 路由器字典
 
 ### 9. TUI 调试工具
-
-OkStdio 内置了一个 TUI（文本用户界面）调试工具 `rcptui`，提供可视化的界面来测试和调试 JSON-RPC 服务。
-
-#### 启动方式
 
 ```bash
 # 使用模块路径启动
 rcptui --server tests.test_server
 
-# 或使用脚本路径
+# 使用脚本路径
 rcptui --server path/to/server.py
-```
 
-或使用 uv：
-
-```bash
+# 使用 uv
 uv run rcptui --server tests.test_server
 ```
 
-#### 界面布局
+界面布局：
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -316,59 +312,24 @@ uv run rcptui --server tests.test_server
 │ ├── 方法2         │ {                                            │
 │ └──▶ 子路由       │   "user_id": 123                             │
 │    ├── 方法1      │ }                                            │
-│ └── 方法2         ├──────────────────────────────────────────────┤
-│                   │ Response | Log |                            │
+│    └── 方法2      ├──────────────────────────────────────────────┤
+│                   │ Response | Log                               │
 │                   ├──────────────────────────────────────────────┤
-│                   │ # 格式化的 JSON 响应显示                      │
-│                   │ # 或请求/响应日志                            │
-│                   │                                              │
+│                   │ # 格式化的 JSON 响应                          │
+│                   │ # 或请求/响应日志                             │
 ├───────────────────┴──────────────────────────────────────────────┤
-│ Footer                                                           │
+│ Footer: Ctrl+j 发送 | Ctrl+r 重启 | Ctrl+l 清日志 | Ctrl+q 退出  │
 └──────────────────────────────────────────────────────────────────┘
 ```
-
-#### 功能
-
-- **方法树浏览**：左侧显示服务器所有方法，支持嵌套路由
-- **参数编辑**：选择方法后自动生成参数模板，JSON 语法高亮
-- **响应查看**：Response 标签页显示格式化 JSON
-- **日志记录**：Log 标签页记录所有请求/响应历史
-- **实时连接**：自动连接到服务器进程
-
-#### 快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl+j` | 发送请求 |
 | `Ctrl+r` | 重启服务器 |
+| `Ctrl+l` | 清理日志 |
 | `Ctrl+q` | 退出 |
 
-#### 使用流程
-
-1. 启动 `rcptui` 并指定服务器路径
-2. 在左侧方法树中选择要测试的方法
-3. 参数编辑器会自动生成参数模板
-4. 根据需要编辑参数
-5. 按 `Ctrl+j` 发送请求
-6. 在 Response 标签页查看结果，或切换到 Log 标签页查看历史
-
-#### 示例会话
-
-```bash
-$ rcptui --server tests.test_server
-
-# 界面启动后：
-# 1. 按方向键选择方法
-# 2. 编辑参数（JSON 格式）
-# 3. 按 Ctrl+j 发送请求
-# 4. 查看响应结果
-# 5. 按 Ctrl+r 重启服务器（如果需要）
-# 6. 按 Ctrl+q 退出
-```
-
 ## 自动文档生成
-
-OkStdio 可以自动生成 Markdown 格式的 API 文档：
 
 ```python
 if __name__ == "__main__":
@@ -376,30 +337,7 @@ if __name__ == "__main__":
     app.runserver()
 ```
 
-生成的文档包含：
-- 所有方法的签名、参数、返回值
-- Pydantic 模型的字段说明
-- 中间件列表
-- 使用示例
-
-## 完整示例
-
-查看 `example/` 目录了解完整的示例项目，包括：
-- **服务器** (`example/server.py`)：英雄管理系统，支持创建英雄、进入副本战斗
-- **客户端** (`example/client.py`)：与服务器交互的示例客户端
-- **数据模型** (`example/schemas.py`)：Pydantic 模型定义
-- **数据库** (`example/databases.py`)：SQLite 数据库操作
-
-运行示例：
-
-```bash
-# 启动客户端（会自动启动服务器）
-python -m example.client
-```
-
 ## 错误处理
-
-OkStdio 提供了标准的 JSON-RPC 错误类型：
 
 ```python
 from okstdio.general.errors import (
@@ -411,20 +349,17 @@ from okstdio.general.errors import (
     RPCServerError,          # -32000~-32099: 服务器错误
 )
 
-# 自定义错误
+# 自定义错误响应
 from okstdio.general.jsonrpc_model import JSONRPCServerErrorDetail
 
 @app.add_method(name="restricted")
 def restricted_method() -> dict | JSONRPCServerErrorDetail:
-    return JSONRPCServerErrorDetail(
-        code=-32001,
-        message="权限不足"
-    )
+    return JSONRPCServerErrorDetail(code=-32001, message="权限不足")
 ```
 
 ## 最佳实践
 
-### 1. 日志配置
+### 日志配置
 
 确保日志只写入文件，不输出到 stdout（避免干扰 JSON-RPC 通信）：
 
@@ -432,30 +367,21 @@ def restricted_method() -> dict | JSONRPCServerErrorDetail:
 import logging
 from logging.handlers import RotatingFileHandler
 
-LOG_HANDLER = RotatingFileHandler(
-    filename="app.log",
-    maxBytes=2 * 1024 * 1024,
-    encoding="utf-8"
-)
-
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-root_logger.handlers.clear()
-root_logger.addHandler(LOG_HANDLER)
+handler = RotatingFileHandler("app.log", maxBytes=2*1024*1024, encoding="utf-8")
+logging.getLogger().handlers.clear()
+logging.getLogger().addHandler(handler)
 ```
 
-### 2. 编码问题
+### 编码问题
 
 在 Windows 上，框架会自动将 stdin/stdout 重新包装为 UTF-8，无需手动配置。
 
-### 3. 模型设计
-
-使用 Pydantic 模型管理复杂参数：
+### Pydantic 模型设计
 
 ```python
 class CreateUserParams(BaseModel):
     username: str = Field(..., min_length=3)
-    email: str = Field(..., regex=r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    email: str = Field(..., description="邮箱")
     age: int = Field(..., ge=0, le=120)
 
 @app.add_method(name="create_user")
@@ -463,57 +389,20 @@ def create_user(params: CreateUserParams) -> dict:
     return {"id": 1, **params.model_dump()}
 ```
 
-### 4. 异步任务
-
-对于长时间运行的任务，使用 `IOWrite` 推送进度：
-
-```python
-@app.add_method(name="long_task")
-async def long_task(io_write: IOWrite) -> dict:
-    for i in range(100):
-        await asyncio.sleep(0.1)
-        await io_write.write(JSONRPCResponse(
-            id="progress",
-            result={"progress": i + 1}
-        ))
-    return {"status": "completed"}
-```
-
-### 5. 依赖注入最佳实践
-
-**单例模式**（推荐用于设备连接、数据库连接等）：
-```python
-# 全局唯一的设备连接
-app.register_dependency(u2.Device, lambda: u2.connect(), singleton=True)
-```
-
-**非单例模式**（用于临时会话、请求上下文等）：
-```python
-# 每次请求创建新实例
-app.register_dependency(Session, lambda: Session(), singleton=False)
-```
-
-**运行时动态注册**（用于启动时无法确定的依赖）：
-```python
-@app.add_method()
-def init_device(device_ip: str) -> dict:
-    device = u2.connect(device_ip)
-    app.register_dependency(u2.Device, lambda: device, singleton=True)
-    return {"status": "ok"}
-```
-
-**依赖检查**：
-```python
-if app.has_dependency(u2.Device):
-    device = app.get_dependency(u2.Device)
-```
-
 ## 技术栈
 
 - **Python 3.10+**：利用现代 Python 特性
 - **Pydantic 2.x**：数据验证和序列化
 - **asyncio**：异步 I/O 支持
-- **Textual**：构建 TUI 界面的现代 Python 框架
+- **Textual**（可选）：TUI 界面框架
+
+## 完整示例
+
+查看 `example/` 目录了解完整示例，包括英雄管理系统服务器/客户端实现。
+
+```bash
+python -m example.client
+```
 
 ## 许可证
 
@@ -527,10 +416,10 @@ MIT License
 
 - [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification)
 - [Pydantic 文档](https://docs.pydantic.dev/)
+- [Textual 文档](https://textual.textualize.io/)
 - [示例项目](example/)
 
 ---
 
-**作者**: jianjian  
+**作者**: jianjian
 **邮箱**: jianjian2048@gmail.com
-
