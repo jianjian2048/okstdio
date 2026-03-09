@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .router import RPCRouter
     from .application import RPCServer
 
+from .dependencies import is_inject_param
+
 
 class AppDoc:
     """应用程序文档生成器
@@ -99,6 +101,10 @@ class AppDoc:
                     and isinstance(annotation, type)
                     and annotation.__name__ == "IOWrite"
                 ):
+                    continue
+
+                # 跳过 Annotated[T, Inject()] 显式依赖参数
+                if is_inject_param(annotation):
                     continue
 
                 # 处理 Annotated 类型

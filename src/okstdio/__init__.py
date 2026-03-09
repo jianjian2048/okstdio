@@ -35,5 +35,6 @@
 """
 
 from .client.manager import ClientManager, BroadcastResult
+from .server.dependencies import Inject
 
-__all__ = ["ClientManager", "BroadcastResult"]
+__all__ = ["ClientManager", "BroadcastResult", "Inject"]

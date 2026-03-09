@@ -98,7 +98,6 @@ def test_error() -> JSONRPCServerErrorDetail:
         data={"param": "value"},
     )
 
-
 if __name__ == "__main__":
     # print("开始启动测试服务器")
     app.runserver()

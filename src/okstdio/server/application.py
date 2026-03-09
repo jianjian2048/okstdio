@@ -14,7 +14,7 @@ from .stream import StdioStream
 from .router import RPCRouter
 from .middleware import MiddlewareManager
 from .appdoc import AppDoc
-from .dependencies import DependencyContainer
+from .dependencies import DependencyContainer, is_inject_param, unwrap_inject_type
 from ..general.jsonrpc_model import *
 from ..general.errors import *
 
@@ -401,8 +401,16 @@ class RPCServer(StdioStream, RPCRouter, AppDoc):
             bound_args = {}
             for name, param in sig.parameters.items():
                 ann = param.annotation
+                # Annotated[T, Inject()] 显式依赖注入
+                if is_inject_param(ann):
+                    actual_type = unwrap_inject_type(ann)
+                    dep = self._dependency_container.resolve_parameter(actual_type)
+                    if dep is not None:
+                        bound_args[name] = dep
+                    elif param.default is not inspect._empty:
+                        bound_args[name] = param.default
                 # Pydantic 模型参数
-                if (
+                elif (
                     inspect.isclass(ann)
                     and issubclass(ann, BaseModel)
                     and isinstance(params, dict)

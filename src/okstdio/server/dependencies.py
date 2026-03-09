@@ -4,7 +4,7 @@
 """
 
 import threading
-from typing import Any, Callable, Dict, Tuple, Type, Optional
+from typing import Annotated, Any, Callable, Dict, Tuple, Type, Optional, get_args, get_origin
 from collections import defaultdict
 
 
@@ -174,3 +174,37 @@ class DependencyContainer:
                         continue
         
         return None
+
+
+class Inject:
+    """标记参数为依赖注入，不出现在 API 文档中。
+
+    配合 typing.Annotated 使用，显式声明参数由依赖容器注入，
+    使其在自动生成的 API 文档和 TUI 调试器参数列表中被排除。
+
+    用法：
+        ```python
+        from typing import Annotated
+        from okstdio import Inject
+
+        @app.add_method()
+        def debug(device: Annotated[u2.Device, Inject()]):
+            device.click()
+            return {"status": "ok"}
+        ```
+    """
+    pass
+
+
+def is_inject_param(annotation: Any) -> bool:
+    """检查参数注解是否为 Annotated[T, Inject()] 形式"""
+    if get_origin(annotation) is Annotated:
+        return any(isinstance(a, Inject) for a in get_args(annotation)[1:])
+    return False
+
+
+def unwrap_inject_type(annotation: Any) -> Any:
+    """从 Annotated[T, Inject()] 中提取实际类型 T"""
+    if get_origin(annotation) is Annotated:
+        return get_args(annotation)[0]
+    return annotation

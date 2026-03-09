@@ -81,9 +81,9 @@ asyncio.run(main())
 from okstdio.server import RPCServer
 
 app = RPCServer(
-    name="my_server",       # 服务器名称（必填），影响方法路径前缀
-    label="我的服务器",      # 人类可读标签（可选）
-    version="v1.0.0"        # 版本号（可选）
+    server_name="my_server",  # 服务器名称，影响方法路径前缀，默认 "app"
+    label="我的服务器",        # 人类可读标签（可选）
+    version="v1.0.0"          # 版本号（可选）
 )
 
 if __name__ == "__main__":
@@ -328,7 +328,6 @@ async def long_task(io_write: IOWrite) -> dict:
 `io_write.write()` 接受：
 - `dict`：自动包装成 JSON-RPC 响应
 - `JSONRPCResponse`：直接写入
-- Pydantic `BaseModel`：自动序列化
 
 ### 5.2 客户端端：stream() 上下文管理器（推荐）
 
@@ -568,7 +567,46 @@ async def long_task(io_write: IOWrite) -> dict:
     return {"done": True}
 ```
 
-### 8.5 依赖检查
+### 8.5 使用 Inject 标记显式声明依赖
+
+隐式依赖注入（按类型自动匹配容器）会导致这些参数出现在自动生成的 API 文档和 TUI 调试器中，令人混淆。使用 `Annotated[T, Inject()]` 可显式标记参数为依赖注入，使其从文档中排除。
+
+```python
+from typing import Annotated
+from okstdio import Inject  # 或 from okstdio.server import Inject
+
+@app.add_method("debug")
+def debug(
+    device: Annotated[u2.Device, Inject()],  # 依赖，不出现在文档
+    keyword: str                              # 普通参数，出现在文档
+) -> dict:
+    device(text=keyword).click()
+    return {"status": "ok"}
+```
+
+`Inject` 标记的参数：
+- **被 TUI 调试器和 API 文档忽略**，不生成参数模板
+- **仍由依赖容器自动注入**，运行时行为不变
+- 适用于静态注册和运行时动态注册的依赖
+
+与运行时注册搭配使用：
+
+```python
+@app.add_method("init_device")
+def init_device(serial: str) -> dict:
+    device = u2.connect(serial)
+    app.register_dependency(u2.Device, lambda: device, singleton=True)
+    return {"status": "ok"}
+
+@app.add_method("click")
+def click(device: Annotated[u2.Device, Inject()], text: str) -> dict:
+    device(text=text).click()
+    return {"status": "ok"}
+```
+
+> **注意**：`IOWrite` 不需要 `Inject` 标记，框架已内置处理。
+
+### 8.6 依赖检查
 
 ```python
 # 检查是否注册
@@ -1006,7 +1044,7 @@ async def process_with_multiple_servers():
 ### RPCServer
 
 ```python
-class RPCServer(name: str, label: str = "", version: str = "")
+class RPCServer(server_name: str = "app", label: str = "", version: str = "v0.1.0")
 ```
 
 | 方法 | 说明 |
@@ -1071,7 +1109,21 @@ class ClientManager()
 
 | 方法 | 说明 |
 |------|------|
-| `write(response)` | 推送消息到父进程（异步） |
+| `write(response)` | 推送消息到父进程（异步），接受 `dict` 或 `JSONRPCResponse` |
+
+### Inject
+
+```python
+from okstdio import Inject
+# 或
+from okstdio.server import Inject
+```
+
+标记类，配合 `typing.Annotated` 使用，将参数声明为依赖注入，使其从 API 文档和 TUI 调试器中排除：
+
+```python
+def my_method(dep: Annotated[MyDep, Inject()], normal_param: str) -> dict: ...
+```
 
 ### RPCRouter
 
