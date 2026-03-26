@@ -46,7 +46,7 @@ from okstdio.server import RPCServer
 
 app = RPCServer("demo")
 
-@app.add_method()
+@app.add_method(name="add")
 def add(a: int, b: int) -> int:
     return a + b
 
@@ -99,13 +99,12 @@ def hello(name: str) -> str:
     """向用户发出问候"""
     return f"Hello, {name}!"
 
-# name 默认使用函数名
-@app.add_method()
+@app.add_method(name="ping")
 def ping() -> str:
     return "pong"
 
 # 异步方法
-@app.add_method()
+@app.add_method(name="fetch_data")
 async def fetch_data(url: str) -> dict:
     # 支持异步操作
     return {"url": url, "data": "..."}
@@ -120,7 +119,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 # 基础类型
-@app.add_method()
+@app.add_method(name="basic_types")
 def basic_types(
     name: str,
     age: int,
@@ -135,12 +134,12 @@ class CreateUserParams(BaseModel):
     email: str = Field(..., description="邮箱")
     age: int = Field(default=18, ge=0, le=120)
 
-@app.add_method()
+@app.add_method(name="create_user")
 def create_user(params: CreateUserParams) -> dict:
     return {"id": 1, **params.model_dump()}
 
 # Annotated 类型注解（更细粒度的验证）
-@app.add_method()
+@app.add_method(name="annotated_params")
 def annotated_params(
     username: Annotated[str, Field(min_length=3, description="用户名")],
     age: Annotated[int, Field(ge=0, le=120, description="年龄")]
@@ -154,7 +153,7 @@ def annotated_params(
 from okstdio.general.jsonrpc_model import JSONRPCServerErrorDetail
 
 # 返回字典
-@app.add_method()
+@app.add_method(name="get_info")
 def get_info() -> dict:
     return {"version": "1.0.0"}
 
@@ -163,12 +162,12 @@ class UserInfo(BaseModel):
     id: int
     name: str
 
-@app.add_method()
+@app.add_method(name="get_user")
 def get_user(user_id: int) -> UserInfo:
     return UserInfo(id=user_id, name="张三")
 
 # 返回自定义错误
-@app.add_method()
+@app.add_method(name="restricted")
 def restricted() -> dict | JSONRPCServerErrorDetail:
     if not has_permission():
         return JSONRPCServerErrorDetail(code=-32001, message="权限不足")
@@ -528,7 +527,7 @@ app.register_dependency(
 参数类型匹配依赖容器中已注册的类型时，自动注入：
 
 ```python
-@app.add_method()
+@app.add_method(name="click_device")
 def click_device(device: u2.Device) -> dict:
     device.click(0.5, 0.5)
     return {"status": "clicked"}
@@ -538,7 +537,7 @@ class MyDevice(u2.Device): ...
 
 app.register_dependency(MyDevice, lambda: MyDevice(), singleton=True)
 
-@app.add_method()
+@app.add_method(name="use_device")
 def use_device(device: u2.Device) -> dict:  # 注入 MyDevice 实例
     return {"ok": True}
 ```
@@ -546,7 +545,7 @@ def use_device(device: u2.Device) -> dict:  # 注入 MyDevice 实例
 ### 8.3 运行时动态注册
 
 ```python
-@app.add_method()
+@app.add_method(name="init_device")
 def init_device(device_ip: str, device_port: int) -> dict:
     device = u2.connect(f"{device_ip}:{device_port}")
     # 运行时注册
@@ -561,7 +560,7 @@ def init_device(device_ip: str, device_port: int) -> dict:
 ```python
 from okstdio.server import IOWrite
 
-@app.add_method()
+@app.add_method(name="long_task")
 async def long_task(io_write: IOWrite) -> dict:
     await io_write.write({"progress": 50})
     return {"done": True}
@@ -736,7 +735,7 @@ from okstdio.general.errors import (
 ```python
 from okstdio.general.errors import RPCInvalidParamsError, RPCServerError
 
-@app.add_method()
+@app.add_method(name="get_user")
 def get_user(user_id: int) -> dict:
     if user_id <= 0:
         raise RPCInvalidParamsError("user_id 必须大于 0")
@@ -751,7 +750,7 @@ def get_user(user_id: int) -> dict:
 ```python
 from okstdio.general.jsonrpc_model import JSONRPCServerErrorDetail
 
-@app.add_method()
+@app.add_method(name="restricted_action")
 def restricted_action() -> dict | JSONRPCServerErrorDetail:
     if not check_permission():
         return JSONRPCServerErrorDetail(
@@ -951,7 +950,7 @@ logging.getLogger().addHandler(handler)
 
 app = RPCServer("my_server", label="服务器", version="v1.0.0")
 
-@app.add_method()
+@app.add_method(name="ping")
 def ping() -> str:
     return "pong"
 
@@ -985,7 +984,7 @@ def create_order(params: CreateOrderParams) -> OrderResult:
 
 ```python
 # 服务器端
-@app.add_method()
+@app.add_method(name="process_files")
 async def process_files(files: list[str], io_write: IOWrite) -> dict:
     total = len(files)
     for i, file in enumerate(files):
@@ -1049,7 +1048,7 @@ class RPCServer(server_name: str = "app", label: str = "", version: str = "v0.1.
 
 | 方法 | 说明 |
 |------|------|
-| `add_method(name, label)` | 装饰器，注册 RPC 方法 |
+| `add_method(name, label)` | 装饰器，注册 RPC 方法，`name` 必填 |
 | `add_middleware(label)` | 装饰器，注册中间件 |
 | `include_router(router)` | 挂载路由器 |
 | `register_dependency(key, factory, singleton)` | 注册依赖 |
@@ -1133,7 +1132,7 @@ class RPCRouter(prefix: str, label: str = "")
 
 | 方法 | 说明 |
 |------|------|
-| `add_method(name, label)` | 装饰器，注册方法 |
+| `add_method(name, label)` | 装饰器，注册方法，`name` 必填 |
 | `add_middleware(label)` | 装饰器，注册中间件 |
 | `include_router(router)` | 挂载子路由器 |
 
